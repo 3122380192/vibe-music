@@ -294,10 +294,11 @@
                 <button class="btn-icon" onclick="sendSongRequest()"><i class="fa-solid fa-plus"></i></button>
             </div>
 
-            <!-- TABS: QUEUE & LIBRARY -->
+            <!-- TABS: QUEUE & LIBRARY & HISTORY -->
             <div class="tabs">
                 <div class="tab active" id="tab-queue" onclick="switchTab('queue')">Hàng Đợi (<span id="queue-count">0</span>)</div>
                 <div class="tab" id="tab-library" onclick="switchTab('library')">Yêu Thích (<span id="lib-count">0</span>)</div>
+                <div class="tab" id="tab-history" onclick="switchTab('history')">Lịch Sử</div>
             </div>
 
             <!-- TAB CONTENT: QUEUE -->
@@ -309,6 +310,15 @@
             <div id="content-library" class="tab-content mb-6">
                 <div style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 10px;">Các bài hát bạn đã <i class="fa-solid fa-heart" style="color:var(--danger)"></i> lưu trong trình duyệt.</div>
                 <ul class="song-list" id="library-list"></ul>
+            </div>
+            
+            <!-- TAB CONTENT: HISTORY -->
+            <div id="content-history" class="tab-content mb-6">
+                <div class="flex justify-between items-center mb-2">
+                    <div style="color: var(--text-muted); font-size: 0.9rem;">Lịch sử các bài đã phát gần đây</div>
+                    <button class="action-btn" onclick="clearHistory()" style="font-size: 0.8rem; padding: 4px 8px; border: 1px solid var(--bg-elevated); border-radius: 8px;">Xoá lịch sử</button>
+                </div>
+                <ul class="song-list" id="history-list"></ul>
             </div>
             
             <div class="flex justify-center gap-3 mb-6">
@@ -357,9 +367,11 @@
             const savedTheme = localStorage.getItem('vibe-theme') || 'spotify';
             setTheme(savedTheme);
             renderLibrary();
+            renderHistory();
         }
         
         let savedLibrary = JSON.parse(localStorage.getItem('vibe-library') || '[]');
+        let savedHistory = JSON.parse(localStorage.getItem('vibe-history') || '[]');
 
         function likeCurrentSong() {
             if (!currentPlaying) return showToast("Chưa có bài nào đang phát!");
@@ -409,6 +421,39 @@
                     </li>
                 `;
             });
+        }
+
+        function renderHistory() {
+            const listEl = document.getElementById('history-list');
+            listEl.innerHTML = '';
+            
+            if (savedHistory.length === 0) {
+                listEl.innerHTML = '<div style="color:var(--text-muted); text-align:center; padding: 20px;">Lịch sử trống.</div>';
+                return;
+            }
+
+            savedHistory.forEach(song => {
+                const ytId = extractYTId(song.url);
+                const thumb = ytId ? `https://img.youtube.com/vi/${ytId}/default.jpg` : 'https://via.placeholder.com/150';
+                listEl.innerHTML += `
+                    <li class="song-item">
+                        <img src="${thumb}" class="song-thumb" onclick="addFromLibrary('${song.url}', '${song.name.replace(/'/g, "\\'")}')" style="cursor:pointer;">
+                        <div class="song-details" onclick="addFromLibrary('${song.url}', '${song.name.replace(/'/g, "\\'")}')" style="cursor:pointer;">
+                            <div class="song-title truncate">${song.name}</div>
+                            <div class="song-meta">Phát bởi ${song.user}</div>
+                        </div>
+                        <button class="action-btn" onclick="addFromLibrary('${song.url}', '${song.name.replace(/'/g, "\\'")}')" title="Phát lại"><i class="fa-solid fa-rotate-right"></i></button>
+                    </li>
+                `;
+            });
+        }
+        
+        function clearHistory() {
+            if(confirm("Xoá toàn bộ lịch sử?")) {
+                savedHistory = [];
+                localStorage.setItem('vibe-history', JSON.stringify(savedHistory));
+                renderHistory();
+            }
         }
 
         function switchTab(tab) {
@@ -593,22 +638,46 @@
             else if (data.type === 'REMOVE_SONG') { playlist = playlist.filter(s => s.id !== data.id); updateHostUI(); broadcastState(); }
         }
 
-        function fetchYoutubeTitleFast(url) {
-            // Lấy ID rồi tạo tên giả vì CORS không cho fetch title tĩnh
-            const ytId = extractYTId(url);
-            return ytId ? "Bài hát YouTube" : "";
+        async function autoExtractTitle() {
+            const url = document.getElementById('song-url').value.trim();
+            if (url) {
+                const ytId = extractYTId(url);
+                if (ytId) {
+                    try {
+                        const res = await fetch(`https://noembed.com/embed?url=${url}`);
+                        const data = await res.json();
+                        if (data.title) {
+                            showToast("Đã nhận diện: " + data.title);
+                            document.getElementById('song-url').dataset.fetchedTitle = data.title;
+                        }
+                    } catch(e) {}
+                }
+            }
         }
 
-        function sendSongRequest() {
+        async function sendSongRequest() {
             const url = document.getElementById('song-url').value.trim();
             if (!url) return showToast("Dán link YouTube vào đã bạn ơi!");
             
-            const title = fetchYoutubeTitleFast(url) || "Audio / Nhạc";
+            let title = document.getElementById('song-url').dataset.fetchedTitle;
+            
+            if (!title) {
+                showToast("Đang lấy tên bài hát...");
+                try {
+                    const res = await fetch(`https://noembed.com/embed?url=${url}`);
+                    const data = await res.json();
+                    if (data.title) title = data.title;
+                } catch(e) {}
+            }
+            
+            if (!title) title = "Audio / Nhạc YouTube";
+            
             const song = { name: title, url: url, user: myName, id: Date.now().toString(), skipVotes: [] };
             mqttClient.publish(`vibecoder/lanplayer/${roomID}/requests`, JSON.stringify({ type: 'ADD_SONG', song: song }));
             
-            showToast("✅ Đã thêm!");
+            showToast("✅ Đã thêm vào hàng đợi!");
             document.getElementById('song-url').value = '';
+            document.getElementById('song-url').dataset.fetchedTitle = '';
             switchTab('queue');
         }
 
@@ -682,6 +751,14 @@
         function updateUIState(data) {
             renderPlayerBar(data.current, data.isPlaying); renderQueueList(data.queue);
             if (data.current) {
+                // Save to history
+                if (!savedHistory.find(s => s.id === data.current.id)) {
+                    savedHistory.unshift(data.current);
+                    if(savedHistory.length > 50) savedHistory.pop(); // Keep last 50
+                    localStorage.setItem('vibe-history', JSON.stringify(savedHistory));
+                    renderHistory();
+                }
+                
                 const ytId = extractYTId(data.current.url);
                 if (ytId && ytId !== currentYtId) { currentYtId = ytId; if (ytPlayer && ytPlayer.loadVideoById) ytPlayer.loadVideoById(ytId); }
                 if (data.isPlaying && ytPlayer && ytPlayer.playVideo) ytPlayer.playVideo();
