@@ -668,7 +668,7 @@
                 </div>
                 <div class="flex gap-2">
                     <button class="action-btn" onclick="copyInviteLink()" title="Sao chép link mời"><i class="fa-solid fa-share-nodes"></i></button>
-                    <button class="action-btn" onclick="location.href=location.pathname" title="Thoát"><i class="fa-solid fa-right-from-bracket"></i></button>
+                    <button class="action-btn" onclick="leaveRoom()" title="Thoát"><i class="fa-solid fa-right-from-bracket"></i></button>
                 </div>
             </div>
 
@@ -2119,6 +2119,14 @@
         let playlist = []; let currentPlaying = null; let isPlaying = false;
         let ytPlayer = null; let ytApiReady = false; let activeRooms = {}; let hostPingInterval = null;
         let roomType = 'music';
+        let localActiveGame = null;
+        let hostCountdownInterval = null;
+        let heartbeatInterval = null;
+        let hostCheckInterval = null;
+        let myJoinTime = Date.now();
+        let roomMembers = {};
+        let lastKnownState = null;
+        let lastTimestamp = 0;
 
         // Mini-Games Global State
         let myCoins = parseFloat(localStorage.getItem('vibe-coins') || '1000');
@@ -2295,6 +2303,9 @@
         function initHost(type) {
             roomType = type || 'music';
             isHost = true; roomID = Math.floor(1000 + Math.random()*9000).toString();
+            myJoinTime = Date.now();
+            roomMembers = {};
+            roomMembers[myName] = { lastSeen: Date.now(), isHost: true, joinTime: myJoinTime };
             setupDashboard();
             if(discoveryClient) discoveryClient.end();
             ytPlayer = initYTPlayer();
@@ -2302,12 +2313,22 @@
             mqttClient.on('connect', () => {
                 showToast("Phòng đã mở!");
                 mqttClient.subscribe(`vibecoder/lanplayer/${roomID}/requests`);
-                hostPingInterval = setInterval(() => mqttClient.publish('vibecoder/lanplayer/discovery/rooms', JSON.stringify({ room: roomID, hostName: myName, roomType: roomType })), 3000);
+                mqttClient.subscribe(`vibecoder/lanplayer/${roomID}/state`);
+                if (hostPingInterval) clearInterval(hostPingInterval);
+                hostPingInterval = setInterval(() => {
+                    if (isHost && mqttClient) {
+                        mqttClient.publish('vibecoder/lanplayer/discovery/rooms', JSON.stringify({ room: roomID, hostName: myName, roomType: roomType }));
+                    }
+                }, 3000);
+                if (heartbeatInterval) clearInterval(heartbeatInterval);
+                heartbeatInterval = setInterval(sendHeartbeat, 3000);
+                sendHeartbeat();
             });
             mqttClient.on('message', handleMqttMessage);
             
             // Continuous game loops tick
-            setInterval(runHostGameCountdownTick, 1000);
+            if (hostCountdownInterval) clearInterval(hostCountdownInterval);
+            hostCountdownInterval = setInterval(runHostGameCountdownTick, 1000);
         }
 
         function initGuest() {
@@ -2325,6 +2346,8 @@
             myName = name;
             localStorage.setItem('vibe-username', myName);
             roomID = pin; isHost = false;
+            myJoinTime = Date.now();
+            roomMembers = {};
             setupDashboard();
             if(discoveryClient) discoveryClient.end();
             ytPlayer = initYTPlayer();
@@ -2333,25 +2356,13 @@
                 showToast("Đã vào phòng!");
                 mqttClient.subscribe(`vibecoder/lanplayer/${roomID}/state`);
                 mqttClient.subscribe(`vibecoder/lanplayer/${roomID}/requests`);
+                if (heartbeatInterval) clearInterval(heartbeatInterval);
+                heartbeatInterval = setInterval(sendHeartbeat, 3000);
+                if (hostCheckInterval) clearInterval(hostCheckInterval);
+                hostCheckInterval = setInterval(checkHostHealth, 2500);
+                sendHeartbeat();
             });
-            let lastTimestamp = 0;
-            mqttClient.on('message', (t, msg) => {
-                const data = JSON.parse(msg.toString());
-                if (t.endsWith('/state') && data.timestamp > lastTimestamp) { lastTimestamp = data.timestamp; updateUIState(data); }
-                else if (t.endsWith('/requests')) {
-                    if (data.type === 'EMOJI') {
-                        triggerEmoji(data.emoji);
-                    } else if (data.type === 'ADMIN_FEEDBACK' && myName === 'TX') {
-                        showToast(`🛡️ Admin: ${data.msg}`);
-                    } else if (data.type === 'DONATION_ANNOUNCEMENT') {
-                        const giftEmoji = data.giftName.split(' ')[0] || '🎁';
-                        showToast(`💖 ${data.user} đã gửi tặng Dealer Vy Vy ${data.giftName}!`);
-                        playGiftAnimation(giftEmoji);
-                        const speechText = `Cảm ơn Ông Chủ ${data.user} đã tặng ${data.giftName} cho Vy Vy nhé! Vy Vy chúc Ông Chủ ${data.user} luôn gặp nhiều may mắn và thắng lớn ạ!`;
-                        setDealerSpeech(speechText, true);
-                    }
-                }
-            });
+            mqttClient.on('message', handleMqttMessage);
         }
 
         function setupDashboard() {
@@ -2456,31 +2467,242 @@
         }
 
         function handleMqttMessage(t, msg) {
-            if (!isHost) return;
-            const data = JSON.parse(msg.toString());
-            if (data.type === 'ADD_SONG') {
-                playlist.push(data.song); showToast(`${data.song.user} thêm nhạc`);
-                if (!currentPlaying) playNextSong(); else { updateHostUI(); broadcastState(); }
-            } else if (data.type === 'VOTE_SKIP' && currentPlaying) {
-                if (!currentPlaying.skipVotes) currentPlaying.skipVotes = [];
-                if (!currentPlaying.skipVotes.includes(data.user)) {
-                    currentPlaying.skipVotes.push(data.user);
-                    if (currentPlaying.skipVotes.length >= 2) { showToast(`Đang chuyển bài...`); skipSong(); }
-                    else { updateHostUI(); broadcastState(); }
+            let data;
+            try { data = JSON.parse(msg.toString()); } catch(e) { return; }
+
+            if (t.endsWith('/state')) {
+                if (!isHost && data.timestamp > lastTimestamp) {
+                    lastTimestamp = data.timestamp;
+                    lastKnownState = data;
+                    if (data.queue) playlist = data.queue;
+                    if (data.current) currentPlaying = data.current;
+                    if (data.gameState) gameState = data.gameState;
+                    if (data.roomType) roomType = data.roomType;
+                    if (data.isPlaying !== undefined) isPlaying = data.isPlaying;
+                    updateUIState(data);
                 }
-            } else if (data.type === 'EMOJI') { triggerEmoji(data.emoji); }
-            else if (data.type === 'REMOVE_SONG') { playlist = playlist.filter(s => s.id !== data.id); updateHostUI(); broadcastState(); }
-            else if (data.type === 'MOVE_TO_TOP') { moveToTop(data.id); }
-            else if (data.type === 'GAME_ACTION') { handleHostGameAction(data); }
-            else if (data.type === 'DONATION_ANNOUNCEMENT') {
-                const giftEmoji = data.giftName.split(' ')[0] || '🎁';
-                showToast(`💖 ${data.user} đã gửi tặng Dealer Vy Vy ${data.giftName}!`);
-                playGiftAnimation(giftEmoji);
-                const speechText = `Cảm ơn Ông Chủ ${data.user} đã tặng ${data.giftName} cho Vy Vy nhé! Vy Vy chúc Ông Chủ ${data.user} luôn gặp nhiều may mắn và thắng lớn ạ!`;
-                setDealerSpeech(speechText, true);
+            } else if (t.endsWith('/requests')) {
+                // Common messages for all users in the room
+                if (data.type === 'HEARTBEAT') {
+                    roomMembers[data.user] = {
+                        lastSeen: Date.now(),
+                        isHost: !!data.isHost,
+                        joinTime: data.joinTime || Date.now()
+                    };
+                } else if (data.type === 'USER_LEFT') {
+                    delete roomMembers[data.user];
+                    if (isHost) {
+                        handleUserSeatRelease(data.user);
+                    }
+                    if (data.wasHost && !isHost) {
+                        checkHostHealth();
+                    }
+                } else if (data.type === 'HOST_ELECTED') {
+                    if (data.user !== myName) {
+                        isHost = false;
+                        if (hostCountdownInterval) {
+                            clearInterval(hostCountdownInterval);
+                            hostCountdownInterval = null;
+                        }
+                        if (hostPingInterval) {
+                            clearInterval(hostPingInterval);
+                            hostPingInterval = null;
+                        }
+                        const ctrlPlayPause = document.getElementById('ctrl-play-pause');
+                        if (ctrlPlayPause) {
+                            ctrlPlayPause.innerHTML = '<i class="fa-solid fa-volume-high"></i>';
+                            ctrlPlayPause.onclick = forcePlayGuest;
+                        }
+                        const ctrlNext = document.getElementById('ctrl-next');
+                        if (ctrlNext) ctrlNext.style.display = 'none';
+                        showToast(`👑 ${data.user} là Trưởng phòng mới!`);
+                    }
+                } else if (data.type === 'EMOJI') {
+                    triggerEmoji(data.emoji);
+                } else if (data.type === 'ADMIN_FEEDBACK' && myName === 'TX') {
+                    showToast(`🛡️ Admin: ${data.msg}`);
+                } else if (data.type === 'DONATION_ANNOUNCEMENT') {
+                    const giftEmoji = data.giftName.split(' ')[0] || '🎁';
+                    showToast(`💖 ${data.user} đã gửi tặng Dealer Vy Vy ${data.giftName}!`);
+                    playGiftAnimation(giftEmoji);
+                    const speechText = `Cảm ơn Ông Chủ ${data.user} đã tặng ${data.giftName} cho Vy Vy nhé! Vy Vy chúc Ông Chủ ${data.user} luôn gặp nhiều may mắn và thắng lớn ạ!`;
+                    setDealerSpeech(speechText, true);
+                }
+
+                // Host-only handlers
+                if (isHost) {
+                    if (data.type === 'ADD_SONG') {
+                        playlist.push(data.song); showToast(`${data.song.user} thêm nhạc`);
+                        if (!currentPlaying) playNextSong(); else { updateHostUI(); broadcastState(); }
+                    } else if (data.type === 'VOTE_SKIP' && currentPlaying) {
+                        if (!currentPlaying.skipVotes) currentPlaying.skipVotes = [];
+                        if (!currentPlaying.skipVotes.includes(data.user)) {
+                            currentPlaying.skipVotes.push(data.user);
+                            if (currentPlaying.skipVotes.length >= 2) { showToast(`Đang chuyển bài...`); skipSong(); }
+                            else { updateHostUI(); broadcastState(); }
+                        }
+                    } else if (data.type === 'REMOVE_SONG') {
+                        playlist = playlist.filter(s => s.id !== data.id); updateHostUI(); broadcastState();
+                    } else if (data.type === 'MOVE_TO_TOP') {
+                        moveToTop(data.id);
+                    } else if (data.type === 'GAME_ACTION') {
+                        handleHostGameAction(data);
+                    }
+                }
             }
-            else if (data.type === 'ADMIN_FEEDBACK' && myName === 'TX') { showToast(`🛡️ Admin: ${data.msg}`); }
         }
+
+        function handleUserSeatRelease(user) {
+            if (!isHost || !gameState) return;
+            let changed = false;
+            if (gameState.caro && gameState.caro.players) {
+                if (gameState.caro.players.X === user) { gameState.caro.players.X = null; changed = true; }
+                if (gameState.caro.players.O === user) { gameState.caro.players.O = null; changed = true; }
+            }
+            if (gameState.bantau && gameState.bantau.players) {
+                if (gameState.bantau.players.P1 === user) { gameState.bantau.players.P1 = null; changed = true; }
+                if (gameState.bantau.players.P2 === user) { gameState.bantau.players.P2 = null; changed = true; }
+            }
+            if (gameState.cotuong && gameState.cotuong.players) {
+                if (gameState.cotuong.players.Red === user) { gameState.cotuong.players.Red = null; changed = true; }
+                if (gameState.cotuong.players.Black === user) { gameState.cotuong.players.Black = null; changed = true; }
+            }
+            if (gameState.chess && gameState.chess.players) {
+                if (gameState.chess.players.white === user) { gameState.chess.players.white = null; changed = true; }
+                if (gameState.chess.players.black === user) { gameState.chess.players.black = null; changed = true; }
+            }
+            if (gameState.rpslan && gameState.rpslan.players) {
+                if (gameState.rpslan.players.P1 === user) { gameState.rpslan.players.P1 = null; gameState.rpslan.status = 'lobby'; changed = true; }
+                if (gameState.rpslan.players.P2 === user) { gameState.rpslan.players.P2 = null; gameState.rpslan.status = 'lobby'; changed = true; }
+            }
+            if (changed) {
+                broadcastState();
+            }
+        }
+
+        function sendHeartbeat() {
+            if (!roomID || !mqttClient) return;
+            try {
+                mqttClient.publish(`vibecoder/lanplayer/${roomID}/requests`, JSON.stringify({
+                    type: 'HEARTBEAT',
+                    user: myName,
+                    isHost: isHost,
+                    joinTime: myJoinTime,
+                    timestamp: Date.now()
+                }));
+            } catch(e) {}
+        }
+
+        function checkHostHealth() {
+            if (!roomID || isHost) return;
+            const now = Date.now();
+            let hasActiveHost = false;
+            for (const u in roomMembers) {
+                if (roomMembers[u].isHost && (now - roomMembers[u].lastSeen < 7000)) {
+                    hasActiveHost = true;
+                    break;
+                }
+            }
+            if (!hasActiveHost) {
+                const activeUsers = Object.entries(roomMembers)
+                    .filter(([u, info]) => (now - info.lastSeen < 7000))
+                    .map(([u, info]) => ({ user: u, joinTime: info.joinTime || now }));
+                if (!activeUsers.find(a => a.user === myName)) {
+                    activeUsers.push({ user: myName, joinTime: myJoinTime });
+                }
+                activeUsers.sort((a, b) => a.joinTime - b.joinTime || a.user.localeCompare(b.user));
+                if (activeUsers.length > 0 && activeUsers[0].user === myName) {
+                    promoteToHost();
+                }
+            }
+        }
+
+        function promoteToHost() {
+            if (isHost) return;
+            isHost = true;
+            showToast("👑 Bạn đã trở thành Trưởng phòng (Host) mới!");
+            
+            // Update Dashboard Host Controls
+            const ctrlPlayPause = document.getElementById('ctrl-play-pause');
+            if (ctrlPlayPause) {
+                ctrlPlayPause.style.display = 'flex';
+                ctrlPlayPause.innerHTML = isPlaying ? '<i class="fa-solid fa-pause"></i>' : '<i class="fa-solid fa-play"></i>';
+                ctrlPlayPause.onclick = togglePlayPause;
+            }
+            const ctrlNext = document.getElementById('ctrl-next');
+            if (ctrlNext) ctrlNext.style.display = 'block';
+            const btnVoteSkip = document.getElementById('btn-vote-skip');
+            if (btnVoteSkip) btnVoteSkip.style.display = 'none';
+            
+            // Discovery ping
+            if (hostPingInterval) clearInterval(hostPingInterval);
+            hostPingInterval = setInterval(() => {
+                if (mqttClient && isHost) {
+                    mqttClient.publish('vibecoder/lanplayer/discovery/rooms', JSON.stringify({ room: roomID, hostName: myName, roomType: roomType }));
+                }
+            }, 3000);
+            
+            // Start Host Game Countdown Tick
+            if (hostCountdownInterval) clearInterval(hostCountdownInterval);
+            hostCountdownInterval = setInterval(runHostGameCountdownTick, 1000);
+            
+            // Ensure audio continues smoothly on new Host
+            if (currentPlaying && ytPlayer) {
+                const ytId = extractYTId(currentPlaying.url);
+                if (ytId) {
+                    currentYtId = ytId;
+                    const curSec = (lastKnownState && lastKnownState.currentTime) ? lastKnownState.currentTime : 0;
+                    if (ytPlayer.loadVideoById) {
+                        ytPlayer.loadVideoById({ videoId: ytId, startSeconds: curSec });
+                        if (isPlaying && ytPlayer.playVideo) ytPlayer.playVideo();
+                    }
+                }
+            }
+            
+            mqttClient.publish(`vibecoder/lanplayer/${roomID}/requests`, JSON.stringify({
+                type: 'HOST_ELECTED',
+                user: myName
+            }));
+            
+            updateHostUI();
+            broadcastState();
+        }
+
+        function leaveRoom() {
+            if (mqttClient) {
+                try {
+                    mqttClient.publish(`vibecoder/lanplayer/${roomID}/requests`, JSON.stringify({
+                        type: 'USER_LEFT',
+                        user: myName,
+                        wasHost: isHost
+                    }));
+                } catch(e) {}
+                try { mqttClient.end(true); } catch(e) {}
+            }
+            if (heartbeatInterval) clearInterval(heartbeatInterval);
+            if (hostCheckInterval) clearInterval(hostCheckInterval);
+            if (hostPingInterval) clearInterval(hostPingInterval);
+            if (hostCountdownInterval) clearInterval(hostCountdownInterval);
+            if (ytPlayer && ytPlayer.stopVideo) {
+                try { ytPlayer.stopVideo(); } catch(e) {}
+            }
+            roomID = '';
+            isHost = false;
+            localActiveGame = null;
+            window.location.href = window.location.origin + window.location.pathname;
+        }
+
+        window.addEventListener('beforeunload', () => {
+            if (roomID && mqttClient) {
+                try {
+                    mqttClient.publish(`vibecoder/lanplayer/${roomID}/requests`, JSON.stringify({
+                        type: 'USER_LEFT',
+                        user: myName,
+                        wasHost: isHost
+                    }));
+                } catch(e) {}
+            }
+        });
 
         async function autoExtractTitle() {
             const url = document.getElementById('song-url').value.trim();
@@ -2624,11 +2846,12 @@
         function updateHostUI() { renderPlayerBar(currentPlaying, isPlaying); renderQueueList(playlist); }
         
         function updateUIState(data) {
-            if (data.roomType) {
+            if (data.roomType && data.roomType !== roomType) {
                 roomType = data.roomType;
                 applyRoomLayout();
             }
-            renderPlayerBar(data.current, data.isPlaying); renderQueueList(data.queue);
+            renderPlayerBar(data.current, data.isPlaying);
+            renderQueueList(data.queue);
             if (data.gameState) { syncGameState(data.gameState); }
             if (data.current) {
                 addToHistory(data.current);
@@ -2637,21 +2860,49 @@
                 if (ytId && ytId !== currentYtId) { 
                     currentYtId = ytId; 
                     if (ytPlayer && ytPlayer.loadVideoById) {
-                        ytPlayer.loadVideoById(ytId);
+                        const elapsedSinceBroadcast = (Date.now() - (data.timestamp || Date.now())) / 1000;
+                        const startSec = Math.max(0, (data.currentTime || 0) + (data.isPlaying ? elapsedSinceBroadcast : 0));
+                        ytPlayer.loadVideoById({ videoId: ytId, startSeconds: startSec });
                         setTimeout(setPlayerVolume, 500);
                     }
+                } else if (ytId && ytPlayer && ytPlayer.getPlayerState) {
+                    const pState = ytPlayer.getPlayerState();
+                    if (data.isPlaying && pState !== YT.PlayerState.PLAYING && pState !== YT.PlayerState.BUFFERING) {
+                        ytPlayer.playVideo();
+                    } else if (!data.isPlaying && pState === YT.PlayerState.PLAYING) {
+                        ytPlayer.pauseVideo();
+                    }
+                    if (data.isPlaying && data.currentTime !== undefined && pState === YT.PlayerState.PLAYING && ytPlayer.getCurrentTime) {
+                        const elapsedSinceBroadcast = (Date.now() - (data.timestamp || Date.now())) / 1000;
+                        const targetTime = data.currentTime + elapsedSinceBroadcast;
+                        const curLocal = ytPlayer.getCurrentTime();
+                        if (Math.abs(curLocal - targetTime) > 3.5) {
+                            ytPlayer.seekTo(targetTime, true);
+                        }
+                    }
                 }
-                if (data.isPlaying && ytPlayer && ytPlayer.playVideo) {
-                    ytPlayer.playVideo();
-                    setTimeout(setPlayerVolume, 500);
-                }
-                else if (!data.isPlaying && ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
-            } else { if(ytPlayer) ytPlayer.stopVideo(); currentYtId = null; }
+            } else {
+                if (ytPlayer && ytPlayer.stopVideo) ytPlayer.stopVideo();
+                currentYtId = null;
+            }
         }
 
         function broadcastState() {
             if (!isHost) return;
-            mqttClient.publish(`vibecoder/lanplayer/${roomID}/state`, JSON.stringify({ current: currentPlaying, queue: playlist, isPlaying: isPlaying, gameState: gameState, roomType: roomType, timestamp: Date.now() }), {retain: true});
+            let curTime = 0;
+            if (ytPlayer && ytPlayer.getCurrentTime) {
+                try { curTime = ytPlayer.getCurrentTime(); } catch(e) {}
+            }
+            mqttClient.publish(`vibecoder/lanplayer/${roomID}/state`, JSON.stringify({
+                current: currentPlaying,
+                queue: playlist,
+                isPlaying: isPlaying,
+                currentTime: curTime,
+                gameState: gameState,
+                roomType: roomType,
+                hostUser: myName,
+                timestamp: Date.now()
+            }), {retain: true});
             syncGameState(gameState);
         }
 
@@ -2735,33 +2986,13 @@
 
         // ================= GAME ENGINE & INTERACTION LOGIC =================
         function enterGame(gameKey) {
-            if (isHost) {
-                // Host handles directly and broadcasts - no MQTT loop needed
-                if (!gameState.balances) gameState.balances = {};
-                gameState.activeGame = gameKey;
-                broadcastState();
-            } else {
-                mqttClient.publish(`vibecoder/lanplayer/${roomID}/requests`, JSON.stringify({
-                    type: 'GAME_ACTION',
-                    action: 'select_game',
-                    game: gameKey,
-                    user: myName
-                }));
-            }
+            localActiveGame = gameKey;
+            syncGameState(gameState);
         }
         
         function exitGame() {
-            if (isHost) {
-                if (!gameState.balances) gameState.balances = {};
-                gameState.activeGame = null;
-                broadcastState();
-            } else {
-                mqttClient.publish(`vibecoder/lanplayer/${roomID}/requests`, JSON.stringify({
-                    type: 'GAME_ACTION',
-                    action: 'exit_game',
-                    user: myName
-                }));
-            }
+            localActiveGame = null;
+            syncGameState(gameState);
         }
         
         function claimFreeCoins() {
@@ -2925,10 +3156,8 @@
             
             if (!gameState.balances) gameState.balances = {};
             
-            if (action === 'select_game') {
-                gameState.activeGame = data.game;
-            } else if (action === 'exit_game') {
-                gameState.activeGame = null;
+            if (action === 'select_game' || action === 'exit_game') {
+                return;
             } else if (action === 'sync_balance') {
                 gameState.balances[user] = parseFloat(Number(data.coins).toFixed(2));
             } else if (action === 'house_fee') {
@@ -3572,7 +3801,7 @@
                 }
             }
             
-            if (!data.activeGame) {
+            if (!localActiveGame) {
                 selEl.style.display = 'block';
                 playEl.style.display = 'none';
                 const zoomControl = document.getElementById('board-zoom-control');
@@ -3584,7 +3813,7 @@
             playEl.style.display = 'block';
             
             document.querySelectorAll('.game-panel').forEach(p => p.style.display = 'none');
-            const activePanel = document.getElementById(`game-panel-${data.activeGame}`);
+            const activePanel = document.getElementById(`game-panel-${localActiveGame}`);
             if (activePanel) activePanel.style.display = 'block';
             
             const titles = {
@@ -3598,23 +3827,23 @@
                 duangua: 'Đua Ngựa 🐎',
                 rpslan: 'Oẳn Tù Tì LAN ✊✌️🖐️'
             };
-            document.getElementById('current-game-title').innerText = titles[data.activeGame] || 'Trò Chơi';
+            document.getElementById('current-game-title').innerText = titles[localActiveGame] || 'Trò Chơi';
             
             const zoomControl = document.getElementById('board-zoom-control');
             if (zoomControl) {
-                const isBoardGame = ['caro', 'bantau', 'cotuong', 'chess'].includes(data.activeGame);
+                const isBoardGame = ['caro', 'bantau', 'cotuong', 'chess'].includes(localActiveGame);
                 zoomControl.style.display = isBoardGame ? 'flex' : 'none';
             }
             
-            if (data.activeGame === 'taixiu') renderTaiXiu(data.taixiu);
-            else if (data.activeGame === 'xocdia') renderXocDia(data.xocdia);
-            else if (data.activeGame === 'caro') renderCaro(data.caro);
-            else if (data.activeGame === 'bantau') renderBanTau(data.bantau);
-            else if (data.activeGame === 'baucua') renderBauCua(data.baucua);
-            else if (data.activeGame === 'cotuong') renderCoTuong(data.cotuong);
-            else if (data.activeGame === 'chess') renderChess(data.chess);
-            else if (data.activeGame === 'duangua') renderDuaNgua(data.duangua);
-            else if (data.activeGame === 'rpslan') renderRpsLan(data.rpslan);
+            if (localActiveGame === 'taixiu') renderTaiXiu(data.taixiu);
+            else if (localActiveGame === 'xocdia') renderXocDia(data.xocdia);
+            else if (localActiveGame === 'caro') renderCaro(data.caro);
+            else if (localActiveGame === 'bantau') renderBanTau(data.bantau);
+            else if (localActiveGame === 'baucua') renderBauCua(data.baucua);
+            else if (localActiveGame === 'cotuong') renderCoTuong(data.cotuong);
+            else if (localActiveGame === 'chess') renderChess(data.chess);
+            else if (localActiveGame === 'duangua') renderDuaNgua(data.duangua);
+            else if (localActiveGame === 'rpslan') renderRpsLan(data.rpslan);
 
             updateDealerStatusAndSpeech();
         }
@@ -3948,7 +4177,8 @@
             if (!state.players.X || !state.players.O) {
                 statusText.innerText = 'Chờ đủ 2 người chơi...';
                 boardEl.style.pointerEvents = 'none';
-                document.getElementById('caro-reset-btn').style.display = 'none';
+                const hasMoves = state.board && state.board.some(v => v !== null);
+                document.getElementById('caro-reset-btn').style.display = hasMoves ? 'block' : 'none';
                 if (autoMoveBtn) autoMoveBtn.style.display = 'none';
             } else if (state.winner) {
                 statusText.innerHTML = `🏆 Kết quả: <span style="color:var(--primary);">${state.winner === 'Hòa' ? 'Hòa nhau' : 'Thắng: ' + state.winner}</span>`;
@@ -4153,7 +4383,8 @@
             if (!state.players.P1 || !state.players.P2) {
                 statusText.innerText = 'Chờ đủ 2 chỉ huy...';
                 gameplayEl.style.display = 'none';
-                document.getElementById('bantau-reset-btn').style.display = 'none';
+                const hasState = state.ready.P1 || state.ready.P2 || (state.board && ((state.board.P1 && state.board.P1.some(v => v !== null)) || (state.board.P2 && state.board.P2.some(v => v !== null))));
+                document.getElementById('bantau-reset-btn').style.display = hasState ? 'block' : 'none';
                 return;
             }
             
