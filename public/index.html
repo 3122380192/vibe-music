@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="vi" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎧 LAN Music Office - Pro Realtime</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Socket.io Client -->
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: { brand: { 500: '#22d3ee', 600: '#06b6d4' } }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; overflow: hidden; height: 100vh; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        .equalizer { display: flex; width: 16px; height: 16px; align-items: flex-end; gap: 2px; }
+        .bar { width: 3px; height: 100%; background: var(--theme-color, #22d3ee); animation: bounce 1.2s infinite ease-in-out; border-radius: 2px; }
+        .bar:nth-child(2) { animation-delay: -0.4s; }
+        .bar:nth-child(3) { animation-delay: -0.8s; }
+        .equalizer.paused .bar { animation-play-state: paused; height: 30% !important; }
+        @keyframes bounce { 0%, 100% { transform: scaleY(0.3); } 50% { transform: scaleY(1); } }
+        .glow-card:hover { box-shadow: 0 4px 25px -5px rgba(34, 211, 238, 0.12); border-color: rgba(34, 211, 238, 0.3); }
+        .admin-glow { box-shadow: 0 0 15px rgba(245, 158, 11, 0.35); }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 flex flex-col select-none">
+
+    <!-- MÀN HÌNH ĐĂNG NHẬP -->
+    <div id="login-modal" class="fixed inset-0 bg-slate-950/95 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 p-8 rounded-3xl shadow-2xl w-full max-w-md text-center relative">
+            <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 mb-5 text-4xl shadow-inner">🎵</div>
+            <h2 class="text-3xl font-extrabold mb-2 text-cyan-400 tracking-tight">Văn Phòng Vui Vẻ</h2>
+            <p class="text-slate-400 mb-6 px-2 text-sm leading-relaxed">Nhập tên để tham gia phòng nghe nhạc đồng bộ mạng LAN</p>
+            
+            <form onsubmit="event.preventDefault(); joinRoom();">
+                <input type="text" id="username-input" autofocus placeholder="Biệt danh của bạn (VD: Văn Trường, Lan Anh...)" 
+                    class="w-full bg-slate-800 border border-slate-700 rounded-2xl px-5 py-4 mb-4 text-white placeholder-slate-500 focus:ring-2 focus:ring-cyan-500 outline-none transition-all text-center font-medium">
+                <button type="submit" class="w-full bg-cyan-500 hover:bg-cyan-400 active:scale-[0.98] text-slate-950 font-bold py-4 rounded-2xl transition duration-200 text-lg shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2">
+                    <span>Vào Phòng Ngay</span>
+                    <span>🚀</span>
+                </button>
+            </form>
+
+            <div class="mt-5 pt-4 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+                <span>👑 Người đầu tiên là Admin</span>
+                <button onclick="openShareModal()" class="text-cyan-400 hover:text-cyan-300 flex items-center gap-1 font-medium transition cursor-pointer">
+                    <span>📱 Quét QR / Link</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL QUÉT MÃ QR & SAO CHÉP LINK VÀO PHÒNG -->
+    <div id="share-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-800 p-6 sm:p-8 rounded-3xl shadow-2xl w-full max-w-md flex flex-col items-center relative animate-scaleUp">
+            <!-- Nút đóng modal -->
+            <button onclick="closeShareModal()" class="absolute top-5 right-5 w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400 hover:text-white transition cursor-pointer text-sm font-bold">✕</button>
+            
+            <div class="flex items-center gap-2 mb-2">
+                <span class="p-2 rounded-xl bg-cyan-500/10 text-cyan-400 text-lg">📱</span>
+                <h3 class="text-xl font-bold text-white">Mời Đồng Nghiệp Vào Phòng</h3>
+            </div>
+            <p class="text-xs text-slate-400 text-center mb-5">Đồng nghiệp chỉ cần kết nối cùng Wi-Fi văn phòng và quét mã QR hoặc mở link dưới đây:</p>
+
+            <!-- Khung Mã QR (Trắng để camera điện thoại nhận diện siêu nhạy) -->
+            <div class="p-3 bg-white rounded-2xl shadow-xl flex items-center justify-center mb-5 border border-slate-200" id="qr-container">
+                <img id="qr-img" src="/api/qr" alt="QR Code Vào Phòng" class="w-56 h-56 object-contain rounded-lg">
+            </div>
+
+            <!-- Lựa chọn Network IP nếu máy Admin có nhiều card mạng (Ethernet/WiFi) -->
+            <div id="lan-selector-container" class="w-full mb-3 hidden">
+                <label class="text-[11px] text-slate-400 font-medium mb-1 block">Chọn mạng LAN phù hợp:</label>
+                <select id="lan-select" onchange="onLanChange(this.value)" class="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-cyan-500">
+                </select>
+            </div>
+
+            <!-- Khung hiển thị Link & Nút Copy -->
+            <div class="w-full space-y-2.5">
+                <div class="flex items-center gap-2 bg-slate-800/90 border border-slate-700 rounded-2xl p-2 pl-3">
+                    <input type="text" id="share-link-input" readonly value="" class="bg-transparent flex-1 text-xs text-cyan-300 font-mono outline-none select-all truncate">
+                    <button onclick="copyShareLink()" id="copy-btn" class="bg-cyan-500 hover:bg-cyan-400 active:scale-95 text-slate-950 px-4 py-2 rounded-xl font-bold text-xs transition flex items-center gap-1.5 cursor-pointer shadow-md shadow-cyan-500/20 flex-shrink-0">
+                        <span id="copy-btn-icon">📋</span>
+                        <span id="copy-btn-text">Sao chép Link</span>
+                    </button>
+                </div>
+                <p class="text-[11px] text-slate-500 text-center">💡 Mở Camera điện thoại (iOS / Android) hoặc Zalo để quét mã tức thì!</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- HEADER -->
+    <header class="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 px-6 py-3 flex justify-between items-center sticky top-0 z-40">
+        <div class="flex items-center space-x-3 sm:space-x-4">
+            <div class="flex items-center space-x-2.5 cursor-pointer">
+                <div class="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-lg">🎧</div>
+                <span class="text-xl font-bold text-white tracking-tight">LAN Music <span class="font-light text-slate-400">Office</span></span>
+            </div>
+
+            <!-- Nút Quét QR & Chia sẻ Link -->
+            <button onclick="openShareModal()" title="Mở mã QR và link để đồng nghiệp cùng tham gia" 
+                class="flex items-center gap-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 active:scale-95 text-cyan-400 px-3 py-1.5 rounded-xl border border-cyan-500/30 text-xs font-semibold transition cursor-pointer shadow-sm">
+                <span>📱</span> <span class="hidden sm:inline">Mã QR & Link</span>
+            </button>
+
+            <!-- Hiển thị Ping LAN thực tế -->
+            <div class="flex items-center gap-2 bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700 text-xs shadow-sm" title="Độ trễ truyền nhận gói tin Socket.io trong mạng LAN">
+                <span id="ping-dot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span class="text-slate-300">Ping: <b id="ping-val" class="text-emerald-400 font-mono">-- ms</b></span>
+            </div>
+
+            <!-- Trạng thái Admin linh hoạt -->
+            <div id="admin-badge-container">
+                <span id="admin-badge" class="text-xs bg-amber-500/10 text-amber-400 px-3 py-1.5 rounded-full border border-amber-500/30 font-medium inline-flex items-center gap-1.5 transition-all">
+                    <span>👑</span> <span id="admin-badge-text">Admin: Đang kết nối...</span>
+                </span>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3 sm:space-x-4">
+            <span class="text-sm text-slate-300 flex items-center gap-2 bg-slate-800/50 px-3 py-1.5 rounded-xl border border-slate-700/60">
+                <span>🎙️</span>
+                <span id="my-role-tag" class="hidden text-[10px] font-bold uppercase bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/40">ADMIN</span>
+                <b id="display-name" class="text-white">Khách</b>
+            </span>
+            <button onclick="toggleMute()" id="mute-btn" class="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 px-4 py-2 rounded-xl text-xs border border-slate-700 transition font-medium cursor-pointer shadow-sm">
+                <span id="mute-icon">🔊</span> <span id="mute-text">Tắt tiếng cá nhân</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- NỘI DUNG CHÍNH -->
+    <main class="flex-1 grid grid-cols-12 gap-5 p-5 overflow-hidden">
+        
+        <!-- CỘT TRÁI: PLAYER & CHAT -->
+        <div class="col-span-7 flex flex-col gap-5 overflow-hidden">
+            <!-- AUDIO PLAYER -->
+            <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 glow-card shadow-xl flex flex-col justify-between relative overflow-hidden">
+                <div class="flex items-center gap-5 mb-5">
+                    <div class="relative w-24 h-24 rounded-2xl overflow-hidden border border-slate-700 flex-shrink-0 shadow-lg group bg-slate-800">
+                        <img id="current-song-thumb" src="https://i.ytimg.com/vi/jfKfPfyJRdk/hqdefault.jpg" alt="Art" class="w-full h-full object-cover transition duration-300 group-hover:scale-105">
+                        <div class="absolute inset-0 bg-gradient-to-t from-slate-950/60 to-transparent"></div>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 mb-1.5">
+                            <div id="equalizer-icon" class="equalizer"><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>
+                            <span class="text-xs font-bold text-cyan-400 uppercase tracking-wider">Đang phát Live (Time-Sync)</span>
+                        </div>
+                        <h3 id="current-song-title" class="font-bold text-xl text-white truncate tracking-tight" title="Đang chờ bài hát...">Chưa có bài hát</h3>
+                        <p id="current-song-user" class="text-sm text-slate-400 truncate">Hãy thêm bài hát vào hàng chờ...</p>
+                    </div>
+                </div>
+
+                <!-- Progress Bar tương tác -->
+                <div class="space-y-1.5 mb-5">
+                    <div id="progress-container" class="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden cursor-pointer relative group">
+                        <div id="progress-bar" class="bg-gradient-to-r from-cyan-500 to-cyan-300 h-full w-0 transition-all duration-150 rounded-full"></div>
+                    </div>
+                    <div class="flex justify-between text-xs text-slate-400 font-mono font-medium px-0.5">
+                        <span id="current-time">00:00</span>
+                        <span id="duration-time">00:00</span>
+                    </div>
+                </div>
+
+                <!-- Controls (Admin có toàn quyền, Client thường chỉ xem) -->
+                <div class="flex items-center justify-between pt-2 border-t border-slate-800/80">
+                    <div class="text-xs font-medium flex items-center gap-1.5 text-slate-400" id="control-status">
+                        <span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+                        <span id="control-hint">Trạng thái: Đồng bộ LAN</span>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <button onclick="sendControl('prev')" id="prev-btn" title="Phát lại từ đầu (Chỉ Admin)" class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 flex items-center justify-center text-white transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer">⏮</button>
+                        <button onclick="sendControl('toggle')" id="play-btn" title="Tạm dừng / Tiếp tục (Chỉ Admin)" class="w-12 h-12 rounded-2xl bg-cyan-400 hover:bg-cyan-300 active:scale-95 text-slate-950 font-bold flex items-center justify-center transition text-lg shadow-lg shadow-cyan-500/20 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">⏸</button>
+                        <button onclick="sendControl('next')" id="next-btn" title="Chuyển bài tiếp theo (Chỉ Admin)" class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 flex items-center justify-center text-white transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer">⏭</button>
+                    </div>
+                    <div class="flex items-center gap-2" title="Âm lượng trình phát riêng của bạn">
+                        <span class="text-slate-400 text-sm">🔊</span>
+                        <input id="volume-slider" oninput="changeVolume(this.value)" type="range" min="0" max="100" value="80" class="w-20 accent-cyan-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg">
+                    </div>
+                </div>
+            </div>
+
+            <!-- CHAT NHÓM -->
+            <div class="flex-1 bg-slate-900 border border-slate-800 rounded-3xl p-5 flex flex-col shadow-xl overflow-hidden glow-card">
+                <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-3">
+                    <h4 class="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                        <span class="p-1.5 rounded-lg bg-slate-800 text-cyan-400">💬</span> Phòng thảo luận LAN
+                    </h4>
+                    <span class="text-xs bg-slate-800 px-2.5 py-1 rounded-full border border-slate-700 text-cyan-400 font-medium" id="online-count">0 người online</span>
+                </div>
+                
+                <div class="flex-1 overflow-y-auto space-y-2.5 pr-2 text-sm text-slate-300 mb-3" id="chat-box">
+                    <div class="text-center text-xs text-slate-500 py-3 italic">Chào mừng bạn đến với LAN Music Office! Hãy trò chuyện cùng đồng nghiệp...</div>
+                </div>
+
+                <form onsubmit="event.preventDefault(); sendChatMessage();" class="flex gap-3 pt-3 border-t border-slate-800">
+                    <input type="text" id="chat-input" placeholder="Nhập tin nhắn tán gẫu..." autocomplete="off" class="flex-1 bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-white focus:ring-2 focus:ring-cyan-500 outline-none text-sm transition">
+                    <button type="submit" class="bg-cyan-400 hover:bg-cyan-300 active:scale-95 text-slate-950 px-5 py-3 rounded-2xl font-bold text-sm transition shadow-md shadow-cyan-500/20 cursor-pointer">Gửi</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- CỘT PHẢI: HÀNG CHỜ VOTE -->
+        <div class="col-span-5 bg-slate-900 border border-slate-800 rounded-3xl p-5 flex flex-col shadow-xl overflow-hidden glow-card">
+            <!-- Form Thêm bài hát -->
+            <div class="mb-5 border-b border-slate-800 pb-5">
+                <h4 class="text-sm font-bold text-white uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <span class="p-1.5 rounded-lg bg-slate-800 text-cyan-400">➕</span> Thêm bài hát vào hàng chờ
+                </h4>
+                <form onsubmit="event.preventDefault(); addSong();" class="flex gap-2.5">
+                    <input type="text" id="song-input" placeholder="Dán link YouTube hoặc tên bài hát..." autocomplete="off"
+                        class="flex-1 bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3.5 text-white placeholder-slate-500 focus:ring-2 focus:ring-cyan-500 outline-none text-sm transition">
+                    <button type="submit" class="bg-cyan-400 hover:bg-cyan-300 active:scale-95 text-slate-950 px-5 py-3.5 rounded-2xl font-bold text-sm transition shadow-lg shadow-cyan-500/20 flex-shrink-0 cursor-pointer">Thêm</button>
+                </form>
+                <p class="text-[11px] text-slate-500 mt-2">Hỗ trợ: Link YouTube (Watch/Shorts/youtu.be) hoặc gõ tên bài hát.</p>
+            </div>
+
+            <!-- Danh sách Playlist sắp xếp theo Vote -->
+            <div class="flex-1 flex flex-col overflow-hidden">
+                <div class="flex items-center justify-between mb-3">
+                    <h4 class="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                        <span class="p-1.5 rounded-lg bg-slate-800 text-cyan-400">📜</span> Hàng chờ (Sắp xếp theo Vote)
+                    </h4>
+                    <span id="queue-count" class="text-xs text-slate-400 font-medium">0 bài</span>
+                </div>
+                
+                <div class="flex-1 overflow-y-auto space-y-2.5 pr-1" id="playlist-container">
+                    <p class="text-xs text-slate-500 text-center py-10">Hàng chờ đang trống...</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- TRÌNH PHÁT NHẠC ẨN -->
+    <div id="yt-player-container" class="fixed -top-[9999px] -left-[9999px] opacity-0 pointer-events-none">
+        <div id="yt-player"></div>
+    </div>
+    <audio id="html5-audio" preload="auto" class="hidden"></audio>
+
+    <!-- YOUTUBE IFRAME API -->
+    <script src="https://www.youtube.com/iframe_api"></script>
+
+    <!-- TOAST THÔNG BÁO NHỎ -->
+    <div id="toast-box" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- LOGIC CLIENT JAVASCRIPT REALTIME -->
+    <script>
+        let socket = null;
+        let currentUserName = localStorage.getItem('lan_music_username') || '';
+        let myUserId = '';
+        let isCurrentAdmin = false;
+        let adminName = '';
+        let adminId = '';
+
+        // Thông tin link LAN & danh sách IP
+        let currentRoomUrl = window.location.origin;
+        let lanList = [];
+
+        // Trạng thái Time-Sync
+        let currentSong = null;
+        let playbackState = {
+            isPlaying: false,
+            startedAt: 0,
+            elapsedAtPause: 0,
+            duration: 0
+        };
+        let clockOffset = 0;
+        let currentVolume = 80;
+        let isMuted = false;
+
+        let ytPlayer = null;
+        let isYtReady = false;
+        const html5Audio = document.getElementById('html5-audio');
+
+        if (currentUserName) {
+            document.getElementById('username-input').value = currentUserName;
+        }
+
+        // Khởi tạo YouTube Iframe Player
+        window.onYouTubeIframeAPIReady = function() {
+            ytPlayer = new YT.Player('yt-player', {
+                height: '180',
+                width: '320',
+                playerVars: {
+                    autoplay: 0,
+                    controls: 0,
+                    disablekb: 1,
+                    fs: 0,
+                    rel: 0,
+                    modestbranding: 1
+                },
+                events: {
+                    onReady: (event) => {
+                        isYtReady = true;
+                        ytPlayer.setVolume(currentVolume);
+                        if (isMuted) ytPlayer.mute();
+                        syncLocalPlayerToCurrentState();
+                    }
+                }
+            });
+        };
+
+        // Lấy thông tin server-info từ API khi mở trang
+        fetch('/api/server-info')
+            .then(res => res.json())
+            .then(data => {
+                if (data.primaryLanUrl) {
+                    // Nếu đang truy cập qua localhost, ưu tiên dùng LAN URL cho nút share và QR
+                    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                        currentRoomUrl = data.primaryLanUrl;
+                    }
+                    setupLanSelector(data.lanList, currentRoomUrl);
+                }
+            })
+            .catch(() => {});
+
+        function setupLanSelector(list, activeUrl) {
+            lanList = list || [];
+            document.getElementById('share-link-input').value = activeUrl;
+            document.getElementById('qr-img').src = `/api/qr?url=${encodeURIComponent(activeUrl)}`;
+
+            if (lanList.length > 1) {
+                const sel = document.getElementById('lan-select');
+                sel.innerHTML = "";
+                lanList.forEach(item => {
+                    const opt = document.createElement('option');
+                    opt.value = item.url;
+                    opt.innerText = `${item.name} (${item.ip})`;
+                    if (item.url === activeUrl) opt.selected = true;
+                    sel.appendChild(opt);
+                });
+                document.getElementById('lan-selector-container').classList.remove('hidden');
+            }
+        }
+
+        function onLanChange(newUrl) {
+            currentRoomUrl = newUrl;
+            document.getElementById('share-link-input').value = newUrl;
+            document.getElementById('qr-img').src = `/api/qr?url=${encodeURIComponent(newUrl)}`;
+        }
+
+        // Mở Modal Quét QR & Share Link
+        function openShareModal() {
+            document.getElementById('share-modal').classList.remove('hidden');
+        }
+
+        function closeShareModal() {
+            document.getElementById('share-modal').classList.add('hidden');
+        }
+
+        // Đóng khi click ngoài khung modal
+        document.getElementById('share-modal').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('share-modal')) {
+                closeShareModal();
+            }
+        });
+
+        // Sao chép Link mời tham gia phòng (Hỗ trợ cả HTTP mạng LAN không có HTTPS)
+        function copyShareLink() {
+            const url = document.getElementById('share-link-input').value || currentRoomUrl;
+            
+            function onCopied() {
+                const btnText = document.getElementById('copy-btn-text');
+                const btnIcon = document.getElementById('copy-btn-icon');
+                btnText.innerText = "Đã sao chép!";
+                btnIcon.innerText = "✅";
+                showToast(`Đã sao chép link phòng: ${url}`, "success");
+                setTimeout(() => {
+                    btnText.innerText = "Sao chép Link";
+                    btnIcon.innerText = "📋";
+                }, 2500);
+            }
+
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(url).then(onCopied).catch(() => fallbackCopy(url, onCopied));
+            } else {
+                fallbackCopy(url, onCopied);
+            }
+        }
+
+        function fallbackCopy(text, callback) {
+            const tempInput = document.createElement('input');
+            tempInput.value = text;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            try {
+                document.execCommand('copy');
+                callback();
+            } catch (err) {
+                prompt("Hãy copy đường link này để vào phòng:", text);
+            }
+            document.body.removeChild(tempInput);
+        }
+
+        // ĐĂNG NHẬP & VÀO PHÒNG
+        function joinRoom() {
+            const input = document.getElementById('username-input').value.trim();
+            if (!input) {
+                alert("Vui lòng nhập biệt danh của bạn!");
+                return;
+            }
+
+            currentUserName = input;
+            localStorage.setItem('lan_music_username', currentUserName);
+            document.getElementById('display-name').innerText = currentUserName;
+            document.getElementById('login-modal').style.display = 'none';
+
+            unlockAudioContext();
+            initSocket();
+        }
+
+        function unlockAudioContext() {
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (AudioContext) {
+                    const ctx = new AudioContext();
+                    if (ctx.state === 'suspended') ctx.resume();
+                }
+            } catch (e) {}
+        }
+
+        function initSocket() {
+            if (socket) return;
+
+            socket = io({
+                reconnectionAttempts: 10,
+                timeout: 5000
+            });
+
+            socket.on('connect', () => {
+                showToast("Đã kết nối tới Server LAN! 🚀", "success");
+                measurePing();
+                socket.emit('user:join', { username: currentUserName });
+            });
+
+            socket.on('disconnect', () => {
+                showToast("Mất kết nối tới Server LAN!", "error");
+                document.getElementById('admin-badge-text').innerText = "Mất kết nối...";
+                document.getElementById('ping-val').innerText = "Offline";
+                document.getElementById('ping-dot').className = "w-2 h-2 rounded-full bg-rose-500";
+            });
+
+            socket.on('user:join_ack', (data) => {
+                myUserId = data.currentUser.id;
+                isCurrentAdmin = data.currentUser.isAdmin;
+                adminId = data.adminId;
+                adminName = data.adminName;
+                clockOffset = data.serverTime - Date.now();
+
+                if (data.primaryLanUrl) {
+                    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                        currentRoomUrl = data.primaryLanUrl;
+                    }
+                    setupLanSelector(data.lanList, currentRoomUrl);
+                }
+
+                updateAdminUI();
+                if (data.currentSong) {
+                    updateCurrentSong(data.currentSong, data.playback);
+                }
+                renderPlaylist(data.playlist || []);
+                updateOnlineCount(data.users ? data.users.length : 1);
+            });
+
+            socket.on('users:update', (data) => {
+                updateOnlineCount(data.count);
+            });
+
+            socket.on('admin:update', (data) => {
+                adminId = data.adminId;
+                adminName = data.adminName;
+                const wasAdmin = isCurrentAdmin;
+                isCurrentAdmin = (myUserId && myUserId === adminId);
+
+                if (!wasAdmin && isCurrentAdmin) {
+                    showToast("👑 Bạn đã được thăng chức lên làm Admin phòng!", "gold");
+                }
+                updateAdminUI();
+            });
+
+            socket.on('chat:message', (msg) => appendChatMessage(msg));
+            socket.on('chat:system', (info) => appendSystemMessage(info));
+            socket.on('playback:change', (data) => updateCurrentSong(data.currentSong, data));
+
+            socket.on('playback:sync', (data) => {
+                playbackState.isPlaying = data.isPlaying;
+                playbackState.elapsedAtPause = data.currentTime;
+                playbackState.startedAt = Date.now();
+                clockOffset = data.serverTime - Date.now();
+
+                syncLocalPlayerToCurrentState();
+                updatePlayPauseButton();
+            });
+
+            socket.on('playback:heartbeat', (data) => {
+                if (currentSong && currentSong.id === data.currentSongId) {
+                    clockOffset = data.serverTime - Date.now();
+                    const expected = data.currentTime;
+                    if (isYtReady && currentSong.youtubeId) {
+                        try {
+                            const cur = ytPlayer.getCurrentTime();
+                            if (Math.abs(cur - expected) > 2) {
+                                ytPlayer.seekTo(expected, true);
+                            }
+                        } catch (e) {}
+                    }
+                }
+            });
+
+            socket.on('playback:meta_update', (data) => {
+                if (currentSong && currentSong.id === data.songId) {
+                    currentSong.title = data.title;
+                    currentSong.duration = data.duration;
+                    document.getElementById('current-song-title').innerText = data.title;
+                    document.getElementById('duration-time').innerText = formatSeconds(data.duration);
+                }
+            });
+
+            socket.on('playlist:update', (list) => renderPlaylist(list));
+            socket.on('control:error', (err) => showToast(err.message, "error"));
+        }
+
+        function measurePing() {
+            if (!socket || !socket.connected) return;
+            const t0 = Date.now();
+            socket.emit('lan:ping', t0, (res) => {
+                const t1 = Date.now();
+                const rtt = t1 - t0;
+                const latency = Math.round(rtt / 2);
+                
+                clockOffset = (res.serverTimestamp + latency) - t1;
+
+                const pingEl = document.getElementById('ping-val');
+                const dotEl = document.getElementById('ping-dot');
+                if (pingEl) pingEl.innerText = `${latency} ms`;
+
+                if (dotEl) {
+                    if (latency < 25) {
+                        dotEl.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse';
+                    } else if (latency < 70) {
+                        dotEl.className = 'w-2 h-2 rounded-full bg-amber-400';
+                    } else {
+                        dotEl.className = 'w-2 h-2 rounded-full bg-rose-400';
+                    }
+                }
+            });
+        }
+        setInterval(measurePing, 4000);
+
+        function updateAdminUI() {
+            const badge = document.getElementById('admin-badge');
+            const badgeText = document.getElementById('admin-badge-text');
+            const roleTag = document.getElementById('my-role-tag');
+            const controlHint = document.getElementById('control-hint');
+            const playBtn = document.getElementById('play-btn');
+            const prevBtn = document.getElementById('prev-btn');
+            const nextBtn = document.getElementById('next-btn');
+
+            if (isCurrentAdmin) {
+                badgeText.innerText = "Bạn là Admin (Chủ phòng)";
+                badge.className = "text-xs bg-amber-500/20 text-amber-300 px-3.5 py-1.5 rounded-full border border-amber-500/50 font-semibold inline-flex items-center gap-1.5 transition-all admin-glow";
+                roleTag.classList.remove('hidden');
+                controlHint.innerText = "Quyền điều khiển: Bạn là Admin";
+
+                playBtn.disabled = false;
+                prevBtn.disabled = false;
+                nextBtn.disabled = false;
+            } else {
+                badgeText.innerText = `Admin: ${adminName || 'Đang cập nhật'}`;
+                badge.className = "text-xs bg-slate-800 text-slate-300 px-3.5 py-1.5 rounded-full border border-slate-700 font-medium inline-flex items-center gap-1.5 transition-all";
+                roleTag.classList.add('hidden');
+                controlHint.innerText = `Chỉ Admin (${adminName || '...'}) mới có quyền điều khiển`;
+
+                playBtn.disabled = true;
+                prevBtn.disabled = true;
+                nextBtn.disabled = true;
+            }
+        }
+
+        function updateOnlineCount(count) {
+            const countEl = document.getElementById('online-count');
+            if (countEl) countEl.innerText = `${count} người online`;
+        }
+
+        function updateCurrentSong(song, syncInfo) {
+            currentSong = song;
+
+            const titleEl = document.getElementById('current-song-title');
+            const userEl = document.getElementById('current-song-user');
+            const thumbEl = document.getElementById('current-song-thumb');
+            const durationEl = document.getElementById('duration-time');
+
+            if (!song) {
+                titleEl.innerText = "Chưa có bài hát";
+                userEl.innerText = "Hãy thêm bài hát vào hàng chờ bên phải...";
+                thumbEl.src = "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&h=300&fit=crop&q=80";
+                durationEl.innerText = "00:00";
+                document.getElementById('current-time').innerText = "00:00";
+                document.getElementById('progress-bar').style.width = "0%";
+                stopAllPlayers();
+                return;
+            }
+
+            titleEl.innerText = song.title;
+            userEl.innerText = `Yêu cầu bởi: ${song.addedBy}`;
+            thumbEl.src = song.thumbnail || "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&h=300&fit=crop&q=80";
+            durationEl.innerText = formatSeconds(song.duration);
+
+            if (syncInfo) {
+                playbackState.isPlaying = syncInfo.isPlaying;
+                playbackState.elapsedAtPause = syncInfo.currentTime || 0;
+                playbackState.startedAt = Date.now();
+                playbackState.duration = song.duration;
+            }
+
+            syncLocalPlayerToCurrentState();
+            updatePlayPauseButton();
+        }
+
+        function getComputedCurrentTime() {
+            if (!currentSong) return 0;
+            if (!playbackState.isPlaying) return playbackState.elapsedAtPause;
+            const elapsed = playbackState.elapsedAtPause + ((Date.now() + clockOffset) - playbackState.startedAt) / 1000;
+            return Math.min(elapsed, currentSong.duration);
+        }
+
+        function syncLocalPlayerToCurrentState() {
+            if (!currentSong) {
+                stopAllPlayers();
+                return;
+            }
+
+            const targetTime = getComputedCurrentTime();
+
+            if (currentSong.youtubeId) {
+                html5Audio.pause();
+                if (isYtReady && ytPlayer) {
+                    try {
+                        const currentYtUrl = ytPlayer.getVideoUrl && ytPlayer.getVideoUrl();
+                        const isSameVideo = currentYtUrl && currentYtUrl.includes(currentSong.youtubeId);
+
+                        if (!isSameVideo) {
+                            ytPlayer.loadVideoById({
+                                videoId: currentSong.youtubeId,
+                                startSeconds: Math.floor(targetTime)
+                            });
+                        } else {
+                            const cur = ytPlayer.getCurrentTime();
+                            if (Math.abs(cur - targetTime) > 1.5) {
+                                ytPlayer.seekTo(targetTime, true);
+                            }
+                        }
+
+                        if (playbackState.isPlaying) {
+                            ytPlayer.playVideo();
+                        } else {
+                            ytPlayer.pauseVideo();
+                        }
+
+                        setTimeout(() => {
+                            if (ytPlayer && ytPlayer.getDuration) {
+                                const realDuration = ytPlayer.getDuration();
+                                const realTitle = ytPlayer.getVideoData ? ytPlayer.getVideoData().title : '';
+                                if (realDuration > 0 && socket) {
+                                    socket.emit('song:update_meta', {
+                                        songId: currentSong.id,
+                                        duration: realDuration,
+                                        title: realTitle
+                                    });
+                                }
+                            }
+                        }, 2500);
+                    } catch (err) {
+                        console.error("YouTube Player error:", err);
+                    }
+                }
+            } else if (currentSong.audioUrl) {
+                if (isYtReady && ytPlayer) ytPlayer.stopVideo();
+
+                if (html5Audio.src !== currentSong.audioUrl) {
+                    html5Audio.src = currentSong.audioUrl;
+                }
+                html5Audio.currentTime = targetTime;
+                if (playbackState.isPlaying && !isMuted) {
+                    html5Audio.play().catch(() => {});
+                } else {
+                    html5Audio.pause();
+                }
+            }
+        }
+
+        function stopAllPlayers() {
+            if (isYtReady && ytPlayer) {
+                try { ytPlayer.stopVideo(); } catch (e) {}
+            }
+            if (html5Audio) html5Audio.pause();
+        }
+
+        function updatePlayPauseButton() {
+            const playBtn = document.getElementById('play-btn');
+            const eq = document.getElementById('equalizer-icon');
+            if (playbackState.isPlaying) {
+                playBtn.innerText = "⏸";
+                if (eq) eq.classList.remove('paused');
+            } else {
+                playBtn.innerText = "▶";
+                if (eq) eq.classList.add('paused');
+            }
+        }
+
+        setInterval(() => {
+            if (!currentSong) return;
+            const timeNow = getComputedCurrentTime();
+            const duration = currentSong.duration || 1;
+            const pct = Math.min(100, (timeNow / duration) * 100);
+
+            document.getElementById('current-time').innerText = formatSeconds(timeNow);
+            document.getElementById('progress-bar').style.width = `${pct}%`;
+        }, 200);
+
+        document.getElementById('progress-container').addEventListener('click', (e) => {
+            if (!isCurrentAdmin) {
+                showToast("Chỉ Admin mới có thể tua thời gian phát!", "info");
+                return;
+            }
+            if (!currentSong) return;
+
+            const rect = e.currentTarget.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            const pct = Math.max(0, Math.min(1, clickX / rect.width));
+            const targetSeconds = pct * currentSong.duration;
+
+            socket.emit('control:action', {
+                action: 'seek',
+                time: targetSeconds
+            });
+        });
+
+        function sendControl(action) {
+            if (!isCurrentAdmin) {
+                showToast("Chỉ Admin mới có quyền điều khiển bài hát!", "error");
+                return;
+            }
+            if (!socket) return;
+            socket.emit('control:action', { action });
+        }
+
+        function changeVolume(val) {
+            currentVolume = parseInt(val, 10);
+            if (isYtReady && ytPlayer) ytPlayer.setVolume(currentVolume);
+            if (html5Audio) html5Audio.volume = currentVolume / 100;
+        }
+
+        function toggleMute() {
+            isMuted = !isMuted;
+            const btn = document.getElementById('mute-btn');
+            const text = document.getElementById('mute-text');
+            const icon = document.getElementById('mute-icon');
+
+            if (isMuted) {
+                text.innerText = "Đã tắt tiếng riêng";
+                icon.innerText = "🔇";
+                btn.className = "flex items-center gap-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 px-4 py-2 rounded-xl text-xs border border-red-500/50 transition font-medium cursor-pointer shadow-sm";
+                if (isYtReady && ytPlayer) ytPlayer.mute();
+                if (html5Audio) html5Audio.muted = true;
+                showToast("Đã tắt âm thanh trên máy của bạn", "info");
+            } else {
+                text.innerText = "Tắt tiếng cá nhân";
+                icon.innerText = "🔊";
+                btn.className = "flex items-center gap-2 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 px-4 py-2 rounded-xl text-xs border border-slate-700 transition font-medium cursor-pointer shadow-sm";
+                if (isYtReady && ytPlayer) ytPlayer.unMute();
+                if (html5Audio) html5Audio.muted = false;
+                showToast("Đã bật lại âm thanh", "info");
+            }
+        }
+
+        function addSong() {
+            const input = document.getElementById('song-input');
+            const query = input.value.trim();
+            if (!query) {
+                input.focus();
+                return;
+            }
+
+            if (!socket || !socket.connected) {
+                showToast("Chưa kết nối tới server!", "error");
+                return;
+            }
+
+            socket.emit('song:add', { query });
+            input.value = "";
+            showToast("Đã gửi đề xuất bài hát!", "success");
+        }
+
+        function voteSong(songId, type) {
+            if (!socket) return;
+            socket.emit('song:vote', { songId, type });
+        }
+
+        function renderPlaylist(list) {
+            const container = document.getElementById('playlist-container');
+            const queueCount = document.getElementById('queue-count');
+            queueCount.innerText = `${list.length} bài`;
+
+            if (!list || list.length === 0) {
+                container.innerHTML = `<p class="text-xs text-slate-500 text-center py-10">Hàng chờ đang trống. Hãy thêm bài hát mới!</p>`;
+                return;
+            }
+
+            let html = "";
+            list.forEach((song, idx) => {
+                const userVote = song.votes ? (song.votes[myUserId] || 0) : 0;
+                const score = song.voteScore || 0;
+                const scoreColor = score > 0 ? "text-emerald-400" : (score < 0 ? "text-rose-400" : "text-slate-400");
+                const upActive = userVote === 1 ? "bg-cyan-500/20 border-cyan-500/60 text-cyan-300" : "bg-slate-800 hover:bg-slate-700 text-slate-400 border-slate-700/60";
+                const downActive = userVote === -1 ? "bg-rose-500/20 border-rose-500/60 text-rose-300" : "bg-slate-800 hover:bg-slate-700 text-slate-400 border-slate-700/60";
+
+                html += `
+                <div class="flex items-center gap-3 p-3 bg-slate-800/40 hover:bg-slate-800/70 rounded-2xl border border-slate-700/50 transition duration-200 group">
+                    <span class="text-xs font-bold text-slate-500 w-5 text-center font-mono">#${idx + 1}</span>
+                    <div class="relative w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 bg-slate-800 border border-slate-700">
+                        <img src="${song.thumbnail}" class="w-full h-full object-cover">
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="text-sm font-semibold text-white truncate" title="${escapeHtml(song.title)}">${escapeHtml(song.title)}</div>
+                        <div class="text-xs text-slate-400 truncate">Bởi: <span class="text-slate-300">${escapeHtml(song.addedBy)}</span></div>
+                    </div>
+                    <div class="flex items-center gap-1.5 bg-slate-900/90 px-2 py-1 rounded-xl border border-slate-700/70">
+                        <button onclick="voteSong('${song.id}', 1)" title="Vote Up (Ưu tiên bài này lên trước)" 
+                            class="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold border transition active:scale-90 ${upActive}">▲</button>
+                        <span class="font-bold text-xs min-w-[20px] text-center font-mono ${scoreColor}">${score > 0 ? '+' + score : score}</span>
+                        <button onclick="voteSong('${song.id}', -1)" title="Vote Down" 
+                            class="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold border transition active:scale-90 ${downActive}">▼</button>
+                    </div>
+                </div>`;
+            });
+
+            container.innerHTML = html;
+        }
+
+        function sendChatMessage() {
+            const input = document.getElementById('chat-input');
+            const message = input.value.trim();
+            if (!message || !socket) return;
+
+            socket.emit('chat:send', { message });
+            input.value = "";
+        }
+
+        function appendChatMessage(msg) {
+            const box = document.getElementById('chat-box');
+            const isMe = (msg.senderId === myUserId);
+            const adminTag = msg.isAdmin ? '<span class="text-[10px] bg-amber-500/20 text-amber-300 px-1 py-0.5 rounded border border-amber-500/40 ml-1 font-bold">👑 ADMIN</span>' : '';
+
+            const div = document.createElement('div');
+            div.className = `flex flex-col ${isMe ? 'items-end' : 'items-start'}`;
+
+            div.innerHTML = `
+                <div class="flex items-center gap-1.5 mb-1 text-[11px] text-slate-400">
+                    <span class="font-semibold ${isMe ? 'text-cyan-300' : 'text-slate-300'}">${escapeHtml(msg.sender)}</span>
+                    ${adminTag}
+                    <span class="text-slate-500 text-[10px]">${msg.time}</span>
+                </div>
+                <div class="px-3.5 py-2 rounded-2xl max-w-[85%] text-xs break-words leading-relaxed ${isMe ? 'bg-cyan-600 text-white rounded-tr-none' : 'bg-slate-800 text-slate-200 rounded-tl-none border border-slate-700/60'}">
+                    ${escapeHtml(msg.text)}
+                </div>
+            `;
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function appendSystemMessage(info) {
+            const box = document.getElementById('chat-box');
+            const div = document.createElement('div');
+            div.className = "text-center my-1";
+            div.innerHTML = `<span class="text-[11px] text-cyan-400/80 bg-cyan-950/40 px-3 py-1 rounded-full border border-cyan-800/40 italic inline-block">${escapeHtml(info.text)}</span>`;
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function formatSeconds(sec) {
+            if (!sec || isNaN(sec)) return "00:00";
+            const s = Math.floor(sec);
+            const m = Math.floor(s / 60);
+            const remainS = s % 60;
+            return `${m < 10 ? '0' + m : m}:${remainS < 10 ? '0' + remainS : remainS}`;
+        }
+
+        function escapeHtml(text) {
+            if (!text) return "";
+            return text.replace(/[&<>"']/g, function(m) {
+                return {
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#039;'
+                }[m];
+            });
+        }
+
+        function showToast(msg, type = "info") {
+            const container = document.getElementById('toast-box');
+            const toast = document.createElement('div');
+            let color = "bg-slate-800 text-slate-200 border-slate-700";
+            if (type === "success") color = "bg-cyan-950/90 text-cyan-200 border-cyan-700/60";
+            if (type === "error") color = "bg-rose-950/90 text-rose-200 border-rose-700/60";
+            if (type === "gold") color = "bg-amber-950/90 text-amber-200 border-amber-500/60";
+
+            toast.className = `${color} border px-4 py-2.5 rounded-2xl shadow-xl text-xs font-medium backdrop-blur-md transition-all duration-300 opacity-0 translate-y-2 flex items-center gap-2`;
+            toast.innerHTML = `<span>⚡</span><span>${escapeHtml(msg)}</span>`;
+            container.appendChild(toast);
+
+            setTimeout(() => toast.classList.remove('opacity-0', 'translate-y-2'), 10);
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3500);
+        }
+    </script>
+</body>
+</html>

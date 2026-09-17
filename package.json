@@ -1,0 +1,24 @@
+{
+  "name": "lan-music-office",
+  "version": "1.0.0",
+  "description": "LAN Music Office - Realtime Music Sharing & Voting Platform for Local Office Networks",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": [
+    "lan",
+    "music",
+    "socket.io",
+    "express",
+    "office"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^5.2.1",
+    "qrcode": "^1.5.4",
+    "socket.io": "^4.8.3"
+  }
+}
