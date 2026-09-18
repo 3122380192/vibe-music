@@ -244,13 +244,13 @@ let adminSocketId = null;
 let playlist = [
     {
         id: 'default_1',
-        title: 'Lofi Hip Hop Radio - Beats to Relax/Study to',
-        artist: 'Lofi Girl',
-        url: 'https://www.youtube.com/watch?v=jfKfPfyJRdk',
-        youtubeId: 'jfKfPfyJRdk',
+        title: 'Nàng Thơ',
+        artist: 'Hoàng Dũng',
+        url: 'https://www.youtube.com/watch?v=Zzn9-ATB9aU',
+        youtubeId: 'Zzn9-ATB9aU',
         audioUrl: null,
-        thumbnail: 'https://i.ytimg.com/vi/jfKfPfyJRdk/hqdefault.jpg',
-        duration: 240,
+        thumbnail: 'https://i.ytimg.com/vi/Zzn9-ATB9aU/hqdefault.jpg',
+        duration: 254,
         addedBy: 'Hệ Thống',
         addedById: 'system',
         addedAt: Date.now() - 10000,
@@ -259,7 +259,7 @@ let playlist = [
     },
     {
         id: 'default_2',
-        title: 'Chillhop Essentials - Relaxing Coffee Vibes',
+        title: 'Chillhop Radio - Jazzy & Lofi Hip Hop Beats',
         artist: 'Chillhop Music',
         url: 'https://www.youtube.com/watch?v=5yx6BWlEVcY',
         youtubeId: '5yx6BWlEVcY',
@@ -271,6 +271,21 @@ let playlist = [
         addedAt: Date.now() - 5000,
         votes: {},
         voteScore: 2
+    },
+    {
+        id: 'default_3',
+        title: 'Snowman',
+        artist: 'Sia',
+        url: 'https://www.youtube.com/watch?v=gset79KMmt0',
+        youtubeId: 'gset79KMmt0',
+        audioUrl: null,
+        thumbnail: 'https://i.ytimg.com/vi/gset79KMmt0/hqdefault.jpg',
+        duration: 170,
+        addedBy: 'Hệ Thống',
+        addedById: 'system',
+        addedAt: Date.now() - 2000,
+        votes: {},
+        voteScore: 1
     }
 ];
 
@@ -290,6 +305,7 @@ function getCurrentPlaybackTime() {
 }
 
 function playSong(song) {
+    if (!song) return;
     currentSong = song;
     playback.isPlaying = true;
     playback.startedAt = Date.now();
@@ -309,35 +325,40 @@ function playSong(song) {
     });
 }
 
-function playNextSong() {
+async function playNextSong() {
     if (playlist.length > 0) {
         const nextSong = playlist.shift();
         playSong(nextSong);
         io.emit('playlist:update', playlist);
     } else {
-        currentSong = null;
-        playback.isPlaying = false;
-        playback.startedAt = 0;
-        playback.elapsedAtPause = 0;
-        playback.duration = 0;
+        // Tự động thêm bài ngẫu nhiên từ kho curated để phòng không bao giờ bị im lặng
+        const autoSong = await queueRandomSong('Hệ Thống (Auto DJ)');
+        if (!autoSong) {
+            currentSong = null;
+            playback.isPlaying = false;
+            playback.startedAt = 0;
+            playback.elapsedAtPause = 0;
+            playback.duration = 0;
 
-        io.emit('playback:change', {
-            currentSong: null,
-            isPlaying: false,
-            currentTime: 0,
-            serverTime: Date.now()
-        });
+            io.emit('playback:change', {
+                currentSong: null,
+                isPlaying: false,
+                currentTime: 0,
+                serverTime: Date.now()
+            });
 
-        io.emit('chat:system', {
-            text: '📭 Hàng chờ bài hát đã hết. Hãy thêm bài mới nhé!',
-            time: new Date().toLocaleTimeString('vi-VN')
-        });
+            io.emit('chat:system', {
+                text: '📭 Hàng chờ bài hát đã hết. Hãy thêm bài mới nhé!',
+                time: new Date().toLocaleTimeString('vi-VN')
+            });
+        }
     }
 }
 
 if (playlist.length > 0) {
     playSong(playlist.shift());
 }
+
 
 // ==========================================
 // KHO NHẠC RANDOM & HỖ TRỢ BOT TELEGRAM
@@ -779,11 +800,16 @@ function extractYouTubeId(urlStr) {
 async function searchYouTube(query) {
     try {
         const res = await fetch('https://www.youtube.com/results?search_query=' + encodeURIComponent(query), {
-            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept-Language': 'vi,en;q=0.9'
+            }
         });
         const html = await res.text();
-        const match = html.match(/\/watch\?v=([a-zA-Z0-9_-]{11})/);
-        if (match) return match[1];
+        const m1 = html.match(/"videoId":"([a-zA-Z0-9_-]{11})"/);
+        if (m1) return m1[1];
+        const m2 = html.match(/\/watch\?v=([a-zA-Z0-9_-]{11})/);
+        if (m2) return m2[1];
     } catch(e) {}
     return null;
 }
@@ -1495,9 +1521,9 @@ io.on('connection', (socket) => {
 
     // 3. THÊM BÀI HÁT (TỰ ĐỘNG NHẬN DIỆN LINK & TÌM KIẾM TÊN BÀI HÁT)
     socket.on('song:add', async (data) => {
-        const user = users.get(socket.id);
+        const user = users.get(socket.id) || { username: 'Thành viên', id: socket.id };
         const query = data && data.query ? data.query.trim() : '';
-        if (!user || !query) return;
+        if (!query) return;
 
         let ytId = extractYouTubeId(query);
         const isAudioUrl = query.match(/\.(mp3|wav|ogg|m4a)(\?.*)?$/i);

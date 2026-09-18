@@ -297,6 +297,13 @@
                     <span id="game-bgm-header-status" class="font-extrabold text-emerald-300">BẬT</span>
                 </button>
 
+                <!-- Game Result Sound Effect Toggle Button (Tắt theo yêu cầu người dùng) -->
+                <button id="game-sfx-toggle-header" onclick="toggleGameResultSound()" class="px-2.5 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-300 hover:text-white font-bold text-xs flex items-center gap-1.5 transition active:scale-95" title="Bật / Tắt tiếng kết quả game (chime thắng, đập bát)">
+                    <i class="fa-solid fa-volume-xmark text-xs text-slate-400"></i>
+                    <span class="hidden lg:inline">Tiếng KQ:</span>
+                    <span class="game-result-sound-status font-extrabold text-slate-400">TẮT</span>
+                </button>
+
                 <!-- Admin Menu Button (Visible for Admin TX) -->
                 <button id="admin-menu-header-btn" onclick="toggleAdminModal()" style="display: none;" class="px-3 py-1.5 rounded-xl bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-extrabold text-xs shadow-lg shadow-red-600/30 flex items-center gap-1.5 transition active:scale-95">
                     <i class="fa-solid fa-shield-halved"></i> <span>MENU ADMIN</span>
@@ -374,6 +381,19 @@
                     <!-- Embedded YouTube Player View -->
                     <div id="yt-player-wrapper" class="relative w-full aspect-video rounded-xl overflow-hidden bg-black border border-slate-700/80 shadow-2xl mb-3">
                         <div id="yt-player-target" class="w-full h-full"></div>
+                    </div>
+
+                    <!-- Audio Autoplay Unlock Prompt (Bấm bật âm thanh) -->
+                    <div id="audio-unlock-banner" onclick="unlockAudioPlayback()" class="bg-gradient-to-r from-cyan-950/90 to-blue-950/90 border border-cyan-500/60 rounded-xl p-2.5 mb-3 flex items-center justify-between cursor-pointer hover:border-cyan-400 transition shadow-lg">
+                        <div class="flex items-center gap-2 text-xs text-cyan-200">
+                            <i class="fa-solid fa-volume-high animate-bounce text-sm text-cyan-400"></i>
+                            <span><b>Trình duyệt đang chặn tự phát tiếng:</b> Bấm vào đây để Bật Tiếng & Nghe Nhạc!</span>
+                        </div>
+                        <span class="px-2.5 py-1 bg-cyan-400 text-slate-950 font-black rounded-lg text-xs hover:bg-cyan-300 transition shrink-0 ml-2">BẬT TIẾNG 🔊</span>
+                    </div>
+
+                    <!-- Song Playback Error Alert (informative, avoids auto-skip death loop) -->
+                    <div id="song-playback-error-banner" class="hidden bg-rose-950/90 border border-rose-500/70 rounded-xl p-2.5 mb-3 text-xs flex items-center justify-between text-rose-200 shadow-lg">
                     </div>
 
                     <!-- Native Audio for MP3/Local Audio Files -->
@@ -566,6 +586,13 @@
                                 <span class="game-bgm-volume-val text-[10px] font-mono text-emerald-400">22%</span>
                             </div>
                         </div>
+
+                        <!-- Game Result SFX Control Bar in Arena -->
+                        <button id="game-sfx-toggle-arena" onclick="toggleGameResultSound()" class="px-2.5 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-400 hover:text-slate-200 font-bold text-xs flex items-center gap-1.5 transition" title="Bật/Tắt tiếng kết quả game">
+                            <i class="fa-solid fa-bell-slash text-xs"></i>
+                            <span>Tiếng KQ:</span>
+                            <span class="game-result-sound-status font-extrabold text-slate-400">TẮT</span>
+                        </button>
                     </div>
                 </div>
 
@@ -1372,8 +1399,35 @@
         // ==========================================
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
+        // ==========================================
+        // CÀI ĐẶT ÂM THANH KẾT QUẢ GAME (MẶC ĐỊNH: TẮT THEO YÊU CẦU)
+        // ==========================================
+        let isGameResultSoundEnabled = localStorage.getItem('lan_game_result_sound') === '1'; // Mặc định là false (TẮT)
+
+        function toggleGameResultSound() {
+            isGameResultSoundEnabled = !isGameResultSoundEnabled;
+            localStorage.setItem('lan_game_result_sound', isGameResultSoundEnabled ? '1' : '0');
+            updateGameResultSoundUI();
+        }
+
+        function updateGameResultSoundUI() {
+            document.querySelectorAll('.game-result-sound-status').forEach(el => {
+                el.innerText = isGameResultSoundEnabled ? 'BẬT' : 'TẮT';
+                el.className = isGameResultSoundEnabled ? 'font-extrabold text-emerald-400' : 'font-extrabold text-slate-400';
+            });
+            const headerBtn = document.getElementById('game-sfx-toggle-header');
+            if (headerBtn) {
+                if (isGameResultSoundEnabled) {
+                    headerBtn.className = "px-2.5 py-1.5 rounded-xl bg-emerald-950/70 border border-emerald-500/50 text-emerald-400 hover:bg-emerald-900/60 font-bold text-xs shadow-md flex items-center gap-1.5 transition active:scale-95";
+                } else {
+                    headerBtn.className = "px-2.5 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-400 hover:text-white font-bold text-xs flex items-center gap-1.5 transition active:scale-95";
+                }
+            }
+        }
+
         // 1. Hiệu ứng đập vỡ cái bát sứ (Smashing Porcelain Bowl Sound)
         function playShatterSound() {
+            if (!isGameResultSoundEnabled) return;
             try {
                 if (audioCtx.state === 'suspended') audioCtx.resume();
                 
@@ -1419,6 +1473,7 @@
 
         // 2. Tiếng xúc xắc lách cách
         function playDiceRattleSound() {
+            if (!isGameResultSoundEnabled) return;
             try {
                 if (audioCtx.state === 'suspended') audioCtx.resume();
                 for (let i = 0; i < 4; i++) {
@@ -1440,6 +1495,7 @@
 
         // 3. Tiếng thắng cược
         function playWinChime() {
+            if (!isGameResultSoundEnabled) return;
             try {
                 if (audioCtx.state === 'suspended') audioCtx.resume();
                 const notes = [523.25, 659.25, 783.99, 1046.50];
@@ -2842,23 +2898,34 @@
             initYouTubePlayer();
         };
 
+        // Kích hoạt ngay nếu YouTube API đã được nạp từ cache trước đó
+        if (window.YT && window.YT.Player) {
+            ytApiReady = true;
+            setTimeout(initYouTubePlayer, 50);
+        }
+
         function initYouTubePlayer() {
-            if (!ytApiReady || typeof YT === 'undefined') return;
+            if (ytPlayer || typeof YT === 'undefined' || !YT.Player) return;
+            const targetEl = document.getElementById('yt-player-target');
+            if (!targetEl) return;
+
             try {
                 ytPlayer = new YT.Player('yt-player-target', {
                     height: '100%',
                     width: '100%',
-                    host: 'https://www.youtube-nocookie.com',
+                    videoId: activeServerSong?.youtubeId || '',
                     playerVars: {
                         'autoplay': 1,
                         'controls': 1,
                         'enablejsapi': 1,
                         'rel': 0,
                         'playsinline': 1,
-                        'origin': window.location.origin
+                        'iv_load_policy': 3
                     },
                     events: {
                         'onReady': (event) => {
+                            ytApiReady = true;
+                            // Thử bật tiếng nhẹ nhàng, nếu bị chặn tự phát thì không throw error
                             try {
                                 event.target.unMute();
                                 event.target.setVolume(100);
@@ -2869,10 +2936,16 @@
                         },
                         'onStateChange': onPlayerStateChange,
                         'onError': (event) => {
-                            console.warn('YouTube playback error:', event.data);
-                            if (isCurrentAdmin) {
-                                // Tự động chuyển bài nếu video bị chặn nhúng hoặc bản quyền
-                                setTimeout(() => sendControlAction('next'), 2000);
+                            console.warn('YouTube playback notice / error code:', event.data);
+                            const errCode = event.data;
+                            const errEl = document.getElementById('song-playback-error-banner');
+                            if (errEl) {
+                                errEl.classList.remove('hidden');
+                                if (errCode === 150 || errCode === 101) {
+                                    errEl.innerHTML = `<div class="flex items-center justify-between w-full"><span><i class="fa-solid fa-triangle-exclamation text-rose-400"></i> Video bị hạn chế bản quyền phát nhúng.</span><button onclick="sendControlAction('next')" class="ml-2 px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-lg text-xs transition">Bỏ qua bài này ⏭️</button></div>`;
+                                } else {
+                                    errEl.innerHTML = `<div class="flex items-center justify-between w-full"><span><i class="fa-solid fa-circle-info text-amber-400"></i> Thông báo phát video (${errCode}).</span><button onclick="sendControlAction('next')" class="ml-2 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-lg text-xs transition">Bài kế tiếp ⏭️</button></div>`;
+                                }
                             }
                         }
                     }
@@ -2883,12 +2956,13 @@
         }
 
         function onPlayerStateChange(event) {
-            // Khi bài hát phát xong tự động chuyển bài tiếp theo
-            if (event.data === YT.PlayerState.ENDED) {
-                if (isCurrentAdmin) {
-                    sendControlAction('next');
-                }
-            } else if (event.data === YT.PlayerState.PLAYING) {
+            // Khi bài hát phát thành công, ẩn ngay các thông báo lỗi & nhắc bật âm thanh
+            if (event.data === YT.PlayerState.PLAYING) {
+                const errEl = document.getElementById('song-playback-error-banner');
+                if (errEl) errEl.classList.add('hidden');
+                const unlockEl = document.getElementById('audio-unlock-banner');
+                if (unlockEl) unlockEl.classList.add('hidden');
+
                 if (ytPlayer && ytPlayer.getDuration) {
                     const dur = ytPlayer.getDuration();
                     if (dur && dur > 10 && activeServerSong && currentSongDuration !== Math.round(dur)) {
@@ -2896,6 +2970,11 @@
                         document.getElementById('playback-duration-time').innerText = formatTime(currentSongDuration);
                         socket.emit('song:update_meta', { songId: activeServerSong.id, duration: dur });
                     }
+                }
+            } else if (event.data === YT.PlayerState.ENDED) {
+                // Tự động chuyển bài khi phát xong
+                if (isCurrentAdmin) {
+                    sendControlAction('next');
                 }
             }
         }
@@ -2910,19 +2989,28 @@
                 if (ytPlayer && ytPlayer.loadVideoById) {
                     if (currentLoadedYtId !== song.youtubeId) {
                         currentLoadedYtId = song.youtubeId;
-                        ytPlayer.loadVideoById({
-                            videoId: song.youtubeId,
-                            startSeconds: seekTime || 0
-                        });
+                        try {
+                            ytPlayer.loadVideoById({
+                                videoId: song.youtubeId,
+                                startSeconds: Math.max(0, Math.round(seekTime || 0))
+                            });
+                        } catch(e) {
+                            console.warn('loadVideoById fallback error:', e);
+                        }
                     }
                     if (isPlaying) {
-                        ytPlayer.playVideo();
+                        try { ytPlayer.playVideo(); } catch(e) {}
                     } else {
-                        ytPlayer.pauseVideo();
+                        try { ytPlayer.pauseVideo(); } catch(e) {}
                     }
+                } else {
+                    // Fallback trực tiếp nhúng iframe nếu SDK chưa sẵn sàng
+                    loadDirectIframeFallback(song.youtubeId, seekTime || 0);
                 }
             } else if (song.audioUrl) {
-                if (ytPlayer && ytPlayer.stopVideo) ytPlayer.stopVideo();
+                if (ytPlayer && ytPlayer.stopVideo) {
+                    try { ytPlayer.stopVideo(); } catch(e) {}
+                }
                 currentLoadedYtId = null;
                 const nativeAudio = document.getElementById('native-audio-player');
                 if (nativeAudio) {
@@ -2934,6 +3022,48 @@
                     else nativeAudio.pause();
                 }
             }
+        }
+
+        function loadDirectIframeFallback(videoId, startSeconds = 0) {
+            const target = document.getElementById('yt-player-target');
+            if (!target) return;
+            currentLoadedYtId = videoId;
+            target.innerHTML = `<iframe id="yt-direct-iframe" class="w-full h-full" src="https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1&start=${Math.round(startSeconds)}&rel=0&playsinline=1" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>`;
+        }
+
+        function unlockAudioPlayback() {
+            try {
+                if (audioCtx && audioCtx.state === 'suspended') {
+                    audioCtx.resume().catch(()=>{});
+                }
+                if (ytPlayer) {
+                    if (ytPlayer.unMute) ytPlayer.unMute();
+                    if (ytPlayer.setVolume) ytPlayer.setVolume(100);
+                    if (activeIsPlaying && ytPlayer.playVideo) {
+                        ytPlayer.playVideo();
+                    }
+                }
+                const nativeAudio = document.getElementById('native-audio-player');
+                if (nativeAudio && activeServerSong?.audioUrl) {
+                    nativeAudio.play().catch(()=>{});
+                }
+                const banner = document.getElementById('audio-unlock-banner');
+                if (banner) banner.classList.add('hidden');
+            } catch(e) {}
+        }
+
+        // Tự động mở khóa âm thanh khi người dùng bấm bất kỳ đâu trên màn hình
+        document.addEventListener('click', () => {
+            unlockAudioPlayback();
+        }, { once: false });
+
+        function forceSyncAudio() {
+            unlockAudioPlayback();
+            if (activeServerSong) {
+                syncPlayerWithSong(activeServerSong, true, activeServerSong?.currentTime || 0);
+            }
+            const banner = document.getElementById('audio-unlock-banner');
+            if (banner) banner.classList.add('hidden');
         }
 
         function updatePlaybackInfo(song, isPlaying, currentTime) {
