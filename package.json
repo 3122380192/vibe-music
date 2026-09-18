@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "online": "node server.js --online",
     "dev": "node --watch server.js"
   },
   "keywords": [
@@ -18,6 +19,7 @@
   "license": "ISC",
   "dependencies": {
     "express": "^5.2.1",
+    "localtunnel": "^2.0.2",
     "qrcode": "^1.5.4",
     "socket.io": "^4.8.3"
   }

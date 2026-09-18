@@ -15,6 +15,7 @@ const io = new Server(server, {
 });
 
 const PORT = process.env.PORT || 3000;
+let globalOnlineUrl = process.env.PUBLIC_URL || null;
 
 // Cấu hình phục vụ file tĩnh (ưu tiên public/)
 app.use(express.static(path.join(__dirname, 'public')));
@@ -37,6 +38,8 @@ function getLanIPs() {
 }
 
 function getPrimaryLanUrl() {
+    if (globalOnlineUrl) return globalOnlineUrl;
+    if (process.env.PUBLIC_URL) return process.env.PUBLIC_URL.replace(/\/+$/, '');
     const ips = getLanIPs();
     if (ips.length > 0) {
         return `http://${ips[0].address}:${PORT}`;
@@ -63,6 +66,7 @@ app.get('/api/server-info', (req, res) => {
     res.json({
         port: PORT,
         primaryLanUrl: primaryUrl,
+        onlineUrl: globalOnlineUrl,
         lanList: ips.map((item) => ({
             name: item.name,
             ip: item.address,
@@ -73,7 +77,7 @@ app.get('/api/server-info', (req, res) => {
 
 app.get('/api/qr', async (req, res) => {
     try {
-        const targetUrl = req.query.url || getPrimaryLanUrl();
+        const targetUrl = req.query.url || globalOnlineUrl || getPrimaryLanUrl();
         const svgString = await QRCode.toString(targetUrl, {
             type: 'svg',
             margin: 1,
@@ -976,6 +980,7 @@ io.on('connection', (socket) => {
             playlist,
             users: Array.from(users.values()),
             primaryLanUrl: primaryLanUrl,
+            onlineUrl: globalOnlineUrl,
             lanList: ips.map((item) => ({
                 name: item.name,
                 ip: item.address,
@@ -1647,8 +1652,8 @@ io.on('connection', (socket) => {
     });
 });
 
-// KHỞI CHẠY SERVER LAN
-server.listen(PORT, '0.0.0.0', () => {
+// KHỞI CHẠY SERVER LAN & ONLINE
+server.listen(PORT, '0.0.0.0', async () => {
     const lanIps = getLanIPs();
     console.log('\n======================================================');
     console.log('   🎧 LAN MUSIC OFFICE & GAME ZONE - SERVER REALTIME');
@@ -1665,5 +1670,32 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log('------------------------------------------------------');
     console.log('* Mã QR & API chia sẻ: http://localhost:' + PORT + '/api/qr');
     console.log('* Tính năng: Time-Sync, Auto Admin, Vote Playlist, Cờ Tướng, Cờ Caro AI, Slot 777, Bài Cào');
-    console.log('======================================================\n');
+
+    // Kiểm tra nếu bật chế độ Online qua tham số --online hoặc biến môi trường ONLINE=true
+    const isOnlineRequested = process.argv.includes('--online') || process.env.ONLINE === 'true';
+    if (isOnlineRequested) {
+        try {
+            console.log('> Đang khởi tạo đường hầm Online toàn cầu (Localtunnel)...');
+            const localtunnel = require('localtunnel');
+            const tunnel = await localtunnel({ port: PORT });
+            globalOnlineUrl = tunnel.url;
+            console.log('======================================================');
+            console.log('🌐 ĐÃ KÍCH HOẠT ĐƯỜNG DẪN ONLINE TOÀN CẦU (INTERNET):');
+            console.log(`👉 ${tunnel.url}`);
+            console.log('(Bất kỳ ai ở ngoài mạng LAN cũng có thể truy cập link này!)');
+            console.log('======================================================');
+            tunnel.on('close', () => {
+                console.log('> Đường hầm Online đã đóng.');
+                globalOnlineUrl = null;
+            });
+            tunnel.on('error', (e) => {
+                console.warn('> Cảnh báo đường hầm Online:', e.message);
+            });
+        } catch(err) {
+            console.warn('> Không thể tạo đường hầm Online tự động:', err.message);
+        }
+    } else {
+        console.log('* Mẹo Online: Chạy "start-online.bat" hoặc "npm run online" để mở link Internet ra ngoài mạng LAN');
+        console.log('======================================================\n');
+    }
 });

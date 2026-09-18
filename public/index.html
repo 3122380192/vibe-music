@@ -252,7 +252,7 @@
                     </h1>
                     <div class="flex items-center gap-2 text-xs text-slate-400">
                         <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                        <span id="header-user-status">Đang kết nối...</span>
+                        <span id="header-user-status" onclick="changeMyNickname()" class="cursor-pointer hover:text-cyan-300 transition" title="Bấm để đổi tên hiển thị">Đang kết nối...</span>
                     </div>
                 </div>
             </div>
@@ -1294,29 +1294,40 @@
     </div>
 
     <!-- ============================================== -->
-    <!-- MODAL: QR CODE & LINK SHARING                  -->
+    <!-- MODAL: QR CODE & LINK SHARING (LAN & ONLINE)   -->
     <!-- ============================================== -->
     <div id="qr-modal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md hidden items-center justify-center p-4">
-        <div class="bg-darkCard border border-darkBorder rounded-3xl max-w-sm w-full p-6 text-center space-y-4 shadow-2xl">
+        <div class="bg-darkCard border border-darkBorder rounded-3xl max-w-sm w-full p-5 sm:p-6 text-center space-y-4 shadow-2xl">
             <h3 class="font-extrabold text-base text-white flex items-center justify-center gap-2">
                 <i class="fa-solid fa-qrcode text-cyan-400"></i> Quét Mã Để Vào Phòng
             </h3>
-            <p class="text-xs text-slate-400">
-                Mở camera trên điện thoại hoặc máy tính bảng kết nối cùng WiFi / LAN:
+
+            <!-- Tab chuyển đổi giữa LAN và Online -->
+            <div id="share-type-tabs" class="flex bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+                <button id="tab-share-lan-btn" onclick="selectShareType('lan')" class="flex-1 py-1.5 rounded-lg font-bold bg-primary text-slate-950 transition">
+                    📶 Mạng LAN (WiFi)
+                </button>
+                <button id="tab-share-online-btn" onclick="selectShareType('online')" class="flex-1 py-1.5 rounded-lg font-bold text-slate-400 hover:text-white transition">
+                    🌐 Online Toàn Cầu
+                </button>
+            </div>
+
+            <p id="share-instruction-text" class="text-xs text-slate-400">
+                Mở camera trên điện thoại hoặc máy tính kết nối cùng WiFi / LAN để quét:
             </p>
             
-            <div class="w-56 h-56 mx-auto bg-white p-2 rounded-2xl shadow-inner flex items-center justify-center">
+            <div class="w-52 h-52 mx-auto bg-white p-2 rounded-2xl shadow-inner flex items-center justify-center">
                 <img id="qr-image" src="/api/qr" alt="QR Code" class="w-full h-full object-contain">
             </div>
 
             <div class="space-y-2">
                 <input type="text" id="lan-link-input" readonly class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-cyan-300 text-center font-mono">
                 <button onclick="copyLanLink()" class="w-full py-2 rounded-xl bg-primary hover:bg-primaryHover text-slate-950 font-bold text-xs transition">
-                    📋 Sao chép link phòng
+                    📋 Sao chép liên kết vào phòng
                 </button>
             </div>
 
-            <button onclick="toggleQrModal()" class="text-xs text-slate-400 hover:text-white pt-2">
+            <button onclick="toggleQrModal()" class="text-xs text-slate-400 hover:text-white pt-1">
                 Đóng
             </button>
         </div>
@@ -1756,17 +1767,72 @@
             }
         }
 
+        let currentLanUrl = '';
+        let currentOnlineUrl = '';
+        let currentShareType = 'lan';
+
+        function selectShareType(type) {
+            currentShareType = type;
+            const targetUrl = (type === 'online' && currentOnlineUrl) ? currentOnlineUrl : currentLanUrl;
+            const input = document.getElementById('lan-link-input');
+            const qrImg = document.getElementById('qr-image');
+            const instr = document.getElementById('share-instruction-text');
+            const lanBtn = document.getElementById('tab-share-lan-btn');
+            const onlineBtn = document.getElementById('tab-share-online-btn');
+
+            if (input) input.value = targetUrl || window.location.origin;
+            if (qrImg) qrImg.src = `/api/qr?url=${encodeURIComponent(targetUrl || window.location.origin)}`;
+
+            if (type === 'online') {
+                if (lanBtn) lanBtn.className = "flex-1 py-1.5 rounded-lg font-bold text-slate-400 hover:text-white transition";
+                if (onlineBtn) onlineBtn.className = "flex-1 py-1.5 rounded-lg font-bold bg-gradient-to-r from-purple-600 to-pink-600 text-white transition";
+                if (instr) instr.innerText = currentOnlineUrl ? "Bất kỳ ai ở ngoài mạng LAN (kết nối 4G/5G/Internet) cũng có thể vào được link này:" : "Chưa bật chế độ Online. Bạn có thể chạy 'start-online.bat' hoặc 'npm run online' để mở link Internet!";
+            } else {
+                if (lanBtn) lanBtn.className = "flex-1 py-1.5 rounded-lg font-bold bg-primary text-slate-950 transition";
+                if (onlineBtn) onlineBtn.className = "flex-1 py-1.5 rounded-lg font-bold text-slate-400 hover:text-white transition";
+                if (instr) instr.innerText = "Mở camera trên điện thoại hoặc máy tính kết nối cùng WiFi / LAN để quét:";
+            }
+        }
+
+        function updateShareLinkUI() {
+            const onlineBtn = document.getElementById('tab-share-online-btn');
+            if (onlineBtn) {
+                if (currentOnlineUrl) {
+                    onlineBtn.classList.remove('hidden');
+                    onlineBtn.innerText = '🌐 Online (Internet)';
+                } else {
+                    onlineBtn.innerText = '🌐 Online';
+                }
+            }
+            selectShareType(currentShareType);
+        }
+
         function toggleQrModal() {
             const m = document.getElementById('qr-modal');
             m.classList.toggle('hidden');
             m.classList.toggle('flex');
+            if (!m.classList.contains('hidden')) {
+                updateShareLinkUI();
+            }
         }
 
         function copyLanLink() {
             const input = document.getElementById('lan-link-input');
             input.select();
             navigator.clipboard.writeText(input.value);
-            alert('Đã sao chép link mạng LAN vào bộ nhớ tạm!');
+            alert('Đã sao chép link phòng (' + (currentShareType === 'online' ? 'Online' : 'LAN') + ') vào bộ nhớ tạm!');
+        }
+
+        function changeMyNickname() {
+            const newName = prompt("Nhập tên hiển thị mới của bạn:");
+            if (newName && newName.trim() && newName.trim() !== myName) {
+                myName = newName.trim();
+                localStorage.setItem('lan_username', myName);
+                document.getElementById('header-user-status').innerHTML = `Đã kết nối: <span class="text-cyan-300 font-bold">${myName}</span> <i class="fa-solid fa-pen text-[9px] opacity-70 ml-1"></i>`;
+                if (socket) {
+                    socket.emit('user:join', { username: myName });
+                }
+            }
         }
 
         function switchMiniGame(game) {
@@ -1859,23 +1925,27 @@
             }, { passive: true });
 
             if (!myName) {
-                myName = prompt("Nhập tên hiển thị của bạn (Nhập 'TX' để nhận quyền Admin):", "Thành viên LAN") || 'Thành viên LAN';
-                myName = myName.trim();
+                myName = prompt("Nhập tên hiển thị của bạn:");
+                if (myName) myName = myName.trim();
+                if (!myName) {
+                    myName = `Thành viên_${Math.floor(1000 + Math.random() * 9000)}`;
+                }
                 localStorage.setItem('lan_username', myName);
             }
 
             socket = io();
 
             socket.on('connect', () => {
-                document.getElementById('header-user-status').innerText = `Đã kết nối: ${myName}`;
+                document.getElementById('header-user-status').innerHTML = `Đã kết nối: <span class="text-cyan-300 font-bold">${myName}</span> <i class="fa-solid fa-pen text-[9px] opacity-70 ml-1"></i>`;
                 socket.emit('user:join', { username: myName });
             });
 
             socket.on('user:join_ack', (data) => {
                 currentUser = data.currentUser;
                 isCurrentAdmin = currentUser.isAdmin || (myName.toUpperCase() === 'TX');
-                document.getElementById('lan-link-input').value = data.primaryLanUrl;
-                document.getElementById('qr-image').src = `/api/qr?url=${encodeURIComponent(data.primaryLanUrl)}`;
+                currentLanUrl = data.primaryLanUrl || window.location.origin;
+                currentOnlineUrl = data.onlineUrl || '';
+                updateShareLinkUI();
                 updateAdminUI();
                 if (data.playlist) renderPlaylist(data.playlist);
                 if (data.currentSong) {
