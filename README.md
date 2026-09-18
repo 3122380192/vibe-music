@@ -69,3 +69,17 @@ Kho lưu trữ mã nguồn: [https://github.com/3122380192/vibe-music](https://g
 4. **Quản Lý Tên Hiển Thị Linh Hoạt**:
    - Không gò bó gợi ý đặt tên hay để lộ mật mã.
    - Người dùng có thể bấm trực tiếp vào tên của mình trên thanh Header để đổi biệt danh bất kỳ lúc nào.
+
+5. **Tích Hợp Telegram Bot & Cầu Nối @HiFiAudiobot (Trường Hợp B)**:
+   - Tích hợp sẵn bot **@MyMusicBridgeBot** (Token: `8853363855:AAF5cNwYh9Dj3JprWrvh5eZ6kESZJ-ECMuI`) liên kết trực tiếp với Nhóm chat Telegram (ID: `-5022971494`).
+   - **Tự động nhận nhạc từ @HiFiAudiobot**: Khi bot @HiFiAudiobot tải bài hát (MP3/FLAC/M4A) về nhóm, bot cầu nối sẽ tự động nhận diện file âm thanh, bóc tách tên bài, ca sĩ và đưa ngay vào phòng phát nhạc cho toàn bộ văn phòng!
+   - **Lưu ý quan trọng để Bot đọc được nhạc trong nhóm**:
+     1. Hãy thăng cấp cho **@MyMusicBridgeBot** làm **Quản trị viên (Admin)** trong nhóm `-5022971494`, HOẶC
+     2. Mở chat riêng với **@BotFather**, gõ `/setprivacy` $\rightarrow$ chọn `@MyMusicBridgeBot` $\rightarrow$ chọn **Disable** (Tắt chế độ ẩn danh nhóm để bot nhìn thấy tin nhắn tệp nhạc của bot khác).
+   - **Các lệnh điều khiển trực tiếp trong nhóm Telegram**:
+     - `/random` : Chọn ngẫu nhiên 1 bài hát thư giãn cực hay vào phòng nhạc.
+     - `/play [tên bài hát hoặc link YouTube]` : Tìm kiếm và phát bài hát bất kỳ.
+     - `/skip` : Bỏ qua bài hát hiện tại.
+     - `/queue` : Xem bài hát đang phát và hàng chờ.
+     - `/link` : Lấy liên kết truy cập phòng nghe nhạc (LAN & Online).
+

@@ -1179,24 +1179,31 @@
                 </div>
             </div>
 
-            <!-- Section 4: KẾT NỐI TELEGRAM BOT (@HiFiAudiobot) & RANDOM NHẠC -->
+            <!-- Section 4: KẾT NỐI TELEGRAM BOT (@HiFiAudiobot & CẦU NỐI NHÓM) -->
             <div class="bg-slate-950 p-4 rounded-2xl border border-sky-500/30 space-y-2.5">
                 <div class="font-bold text-xs sm:text-sm text-sky-400 flex items-center justify-between">
                     <span class="flex items-center gap-1.5"><i class="fa-brands fa-telegram text-base"></i> KẾT NỐI BOT TELEGRAM</span>
                     <span id="telegram-bot-status-badge" class="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full font-bold">Chưa kết nối</span>
                 </div>
                 <div class="text-[11px] text-slate-400 leading-relaxed">
-                    Dán <b>Bot Token</b> từ @BotFather để bot tự động nhận lệnh <code>/random</code>, <code>/play</code> và file nhạc MP3/FLAC từ Telegram:
+                    Bot cầu nối Telegram: <b>@MyMusicBridgeBot</b> đang liên kết với nhóm chat ID: <code class="text-sky-300 font-mono">-5022971494</code>.
                 </div>
-                <div class="flex gap-2">
-                    <input type="password" id="telegram-token-input" placeholder="Ví dụ: 123456789:ABCdefGHI..." class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-sky-300 font-mono">
-                    <button onclick="saveTelegramBotToken()" class="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs transition">
-                        Kết Nối
-                    </button>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                        <label class="text-[10px] text-slate-400 block mb-0.5 font-semibold">Bot Token (@BotFather):</label>
+                        <input type="text" id="telegram-token-input" value="8853363855:AAF5cNwYh9Dj3JprWrvh5eZ6kESZJ-ECMuI" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-sky-300 font-mono">
+                    </div>
+                    <div>
+                        <label class="text-[10px] text-slate-400 block mb-0.5 font-semibold">ID Nhóm Chat Telegram:</label>
+                        <input type="text" id="telegram-chat-id-input" value="-5022971494" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-sky-300 font-mono">
+                    </div>
                 </div>
                 <div class="flex items-center gap-2 pt-1">
-                    <button onclick="triggerRandomSongNow()" class="flex-1 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs transition shadow flex items-center justify-center gap-1.5">
-                        🎲 Phát ngẫu nhiên 1 bài ngay lập tức
+                    <button onclick="saveTelegramBotToken()" class="flex-1 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs transition shadow flex items-center justify-center gap-1.5">
+                        <i class="fa-solid fa-link"></i> Cập Nhật & Kết Nối Lại Bot
+                    </button>
+                    <button onclick="triggerRandomSongNow()" class="py-2 px-3 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs transition shadow flex items-center justify-center gap-1.5">
+                        🎲 Test Random Nhạc
                     </button>
                 </div>
             </div>
@@ -1977,6 +1984,15 @@
                     updatePlaybackInfo(data.currentSong, data.playback?.isPlaying, data.playback?.currentTime || 0);
                 }
                 if (data.gameState) handleGameStateUpdate(data.gameState);
+
+                // Tự động kiểm tra trạng thái Telegram Bot
+                fetch('/api/bot/status').then(r => r.json()).then(d => {
+                    const badge = document.getElementById('telegram-bot-status-badge');
+                    if (badge && d.botConnected && d.botInfo) {
+                        badge.className = "text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold";
+                        badge.innerText = `Đã kết nối: @${d.botInfo.username}`;
+                    }
+                }).catch(()=>{});
             });
 
             socket.on('online:update', (data) => {
@@ -3068,8 +3084,8 @@
         }
 
         async function saveTelegramBotToken() {
-            const input = document.getElementById('telegram-token-input');
-            const token = input.value.trim();
+            const token = (document.getElementById('telegram-token-input')?.value || '').trim();
+            const chatId = (document.getElementById('telegram-chat-id-input')?.value || '').trim();
             if (!token) {
                 alert('Vui lòng nhập Bot Token của bạn từ @BotFather!');
                 return;
@@ -3078,7 +3094,7 @@
                 const res = await fetch('/api/bot/set-token', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token })
+                    body: JSON.stringify({ token, chatId })
                 });
                 const data = await res.json();
                 alert(data.message || 'Đang kết nối bot Telegram...');
@@ -3086,6 +3102,32 @@
                 alert('Lỗi kết nối bot: ' + e.message);
             }
         }
+
+        // Lắng nghe sự kiện của Native Audio Player để cập nhật tiến trình bài hát Telegram
+        window.addEventListener('DOMContentLoaded', () => {
+            const nativeAudio = document.getElementById('native-audio-player');
+            if (nativeAudio) {
+                nativeAudio.onended = () => {
+                    if (isCurrentAdmin) {
+                        sendControlAction('next');
+                    }
+                };
+                nativeAudio.ontimeupdate = () => {
+                    if (activeServerSong?.audioUrl && !activeServerSong.youtubeId) {
+                        const cur = nativeAudio.currentTime;
+                        const dur = (nativeAudio.duration && !isNaN(nativeAudio.duration)) ? nativeAudio.duration : (activeServerSong.duration || 220);
+                        updatePlaybackProgress(cur, dur);
+                    }
+                };
+                nativeAudio.onloadedmetadata = () => {
+                    if (nativeAudio.duration && !isNaN(nativeAudio.duration) && nativeAudio.duration > 5) {
+                        currentSongDuration = Math.round(nativeAudio.duration);
+                        const durEl = document.getElementById('playback-duration-time');
+                        if (durEl) durEl.innerText = formatTime(currentSongDuration);
+                    }
+                };
+            }
+        });
 
         function renderPlaylist(list) {
             document.getElementById('playlist-count-badge').innerText = list.length;
