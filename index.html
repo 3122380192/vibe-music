@@ -290,6 +290,13 @@
                     <i class="fa-solid fa-dice-six"></i> <span class="hidden sm:inline">Minibox</span>
                 </button>
 
+                <!-- Game BGM Toggle Header Button -->
+                <button id="game-bgm-toggle-header" onclick="toggleGameBGM()" class="px-2.5 py-1.5 rounded-xl bg-emerald-950/70 border border-emerald-500/50 text-emerald-400 hover:bg-emerald-900/60 font-bold text-xs shadow-md shadow-emerald-950 flex items-center gap-1.5 transition active:scale-95" title="Bật / Tắt nhạc game thư giãn">
+                    <i id="game-bgm-header-icon" class="fa-solid fa-music text-xs"></i>
+                    <span class="hidden lg:inline">Nhạc Game:</span>
+                    <span id="game-bgm-header-status" class="font-extrabold text-emerald-300">BẬT</span>
+                </button>
+
                 <!-- Admin Menu Button (Visible for Admin TX) -->
                 <button id="admin-menu-header-btn" onclick="toggleAdminModal()" style="display: none;" class="px-3 py-1.5 rounded-xl bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-extrabold text-xs shadow-lg shadow-red-600/30 flex items-center gap-1.5 transition active:scale-95">
                     <i class="fa-solid fa-shield-halved"></i> <span>MENU ADMIN</span>
@@ -536,11 +543,26 @@
                         </h2>
                     </div>
 
-                    <!-- Board Size Zoom Control (for Caro & Co Tuong) -->
-                    <div id="board-zoom-box" class="hidden items-center gap-2 bg-slate-950 px-3 py-1 rounded-xl border border-slate-800 text-xs">
-                        <span class="text-slate-400"><i class="fa-solid fa-magnifying-glass"></i> Cỡ bàn:</span>
-                        <input type="range" min="280" max="550" value="420" oninput="changeBoardSize(this.value)" class="w-20 accent-cyan-400 cursor-pointer">
-                        <span id="board-size-val" class="font-bold text-cyan-400">420px</span>
+                    <div class="flex items-center gap-2">
+                        <!-- Board Size Zoom Control (for Caro & Co Tuong) -->
+                        <div id="board-zoom-box" class="hidden items-center gap-2 bg-slate-950 px-3 py-1 rounded-xl border border-slate-800 text-xs">
+                            <span class="text-slate-400"><i class="fa-solid fa-magnifying-glass"></i> Cỡ bàn:</span>
+                            <input type="range" min="280" max="550" value="420" oninput="changeBoardSize(this.value)" class="w-20 accent-cyan-400 cursor-pointer">
+                            <span id="board-size-val" class="font-bold text-cyan-400">420px</span>
+                        </div>
+
+                        <!-- Game Relaxing BGM Control Bar in Arena -->
+                        <div class="flex items-center gap-2 bg-slate-950/80 px-2.5 py-1.5 rounded-xl border border-slate-800 text-xs">
+                            <button id="game-bgm-toggle-arena" onclick="toggleGameBGM()" class="font-bold flex items-center gap-1.5 transition text-emerald-400 hover:text-emerald-300" title="Bật/Tắt nhạc game thư giãn">
+                                <i id="game-bgm-arena-icon" class="fa-solid fa-music"></i>
+                                <span id="game-bgm-arena-status">Nhạc Game: BẬT</span>
+                            </button>
+                            <div class="hidden sm:flex items-center gap-1.5 pl-2 border-l border-slate-800">
+                                <i class="fa-solid fa-volume-low text-[10px] text-slate-400"></i>
+                                <input type="range" min="0.02" max="0.5" step="0.02" value="0.22" oninput="setGameBgmVolume(this.value)" class="game-bgm-slider w-16 accent-emerald-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg" title="Âm lượng nhạc nền game">
+                                <span class="game-bgm-volume-val text-[10px] font-mono text-emerald-400">22%</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -1167,9 +1189,15 @@
                 <div class="flex items-center gap-2 text-purple-400 font-extrabold text-base">
                     <i class="fa-solid fa-dice text-xl"></i> MINIBOX GAME SLOTS & BÀI
                 </div>
-                <button onclick="toggleArcadeModal()" class="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center">
-                    ✕
-                </button>
+                <div class="flex items-center gap-2">
+                    <button id="game-bgm-toggle-arcade" onclick="toggleGameBGM()" class="px-2.5 py-1 rounded-lg bg-emerald-950/80 border border-emerald-500/40 text-xs text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1.5 transition" title="Bật/Tắt nhạc thư giãn">
+                        <i id="game-bgm-arcade-icon" class="fa-solid fa-music text-[11px]"></i>
+                        <span id="game-bgm-arcade-status">Nhạc: BẬT</span>
+                    </button>
+                    <button onclick="toggleArcadeModal()" class="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center">
+                        ✕
+                    </button>
+                </div>
             </div>
 
             <!-- Minibox Tabs (Slot 777 vs Bài Cào 3 Lá) -->
@@ -1390,6 +1418,256 @@
         }
 
         // ==========================================
+        // 4. RELAXING LO-FI GAME BACKGROUND MUSIC ENGINE (Web Audio API)
+        // ==========================================
+        let isGameBgmEnabled = localStorage.getItem('lan_game_bgm_enabled') !== '0'; // default: Bật
+        let gameBgmVolume = parseFloat(localStorage.getItem('lan_game_bgm_volume') || '0.22');
+        let gameBgmTimer = null;
+        let gameBgmMasterGain = null;
+        let isGameBgmPlaying = false;
+        let chordStep = 0;
+
+        // Rich Lo-Fi / Ambient Chill Chords (fundamental notes in Hz):
+        // Cmaj9 -> Am9 -> Fmaj7 -> G6/9 -> Em9 -> Dm9
+        const LOFI_CHORDS = [
+            [130.81, 196.00, 246.94, 293.66, 329.63], // Cmaj9
+            [110.00, 164.81, 196.00, 261.63, 493.88], // Am9
+            [87.31,  130.81, 220.00, 329.63, 392.00], // Fmaj7
+            [98.00,  146.83, 246.94, 329.63, 440.00], // G6/9
+            [82.41,  123.47, 196.00, 293.66, 369.99], // Em9
+            [146.83, 220.00, 261.63, 329.63, 349.23]  // Dm9
+        ];
+
+        // Soft pentatonic Kalimba / chime notes (delicate sparkling tones)
+        const CHILL_BELL_FREQS = [523.25, 587.33, 659.25, 783.99, 880.00, 1046.50, 1174.66, 1318.51];
+
+        function getBgmMasterGain() {
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume().catch(()=>{});
+            }
+            if (!gameBgmMasterGain) {
+                gameBgmMasterGain = audioCtx.createGain();
+                gameBgmMasterGain.gain.setValueAtTime(isGameBgmEnabled ? gameBgmVolume : 0.0001, audioCtx.currentTime);
+                gameBgmMasterGain.connect(audioCtx.destination);
+            }
+            return gameBgmMasterGain;
+        }
+
+        function playRelaxingChord(freqs, durationSec = 4.2) {
+            if (!isGameBgmEnabled || !isGameBgmPlaying) return;
+            try {
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const now = audioCtx.currentTime;
+                const masterGain = getBgmMasterGain();
+
+                // Warm analog low-pass filter (vintage Rhodes / electric piano tone)
+                const chordFilter = audioCtx.createBiquadFilter();
+                chordFilter.type = 'lowpass';
+                chordFilter.frequency.setValueAtTime(650, now);
+                chordFilter.Q.setValueAtTime(1.6, now);
+                // Subtle breathing filter envelope
+                chordFilter.frequency.exponentialRampToValueAtTime(800, now + 1.2);
+                chordFilter.frequency.exponentialRampToValueAtTime(520, now + durationSec);
+
+                // Chord gain envelope (smooth swell and long gentle fade)
+                const chordGain = audioCtx.createGain();
+                chordGain.gain.setValueAtTime(0.0001, now);
+                chordGain.gain.linearRampToValueAtTime(0.18, now + 0.8);
+                chordGain.gain.exponentialRampToValueAtTime(0.0001, now + durationSec);
+
+                chordGain.connect(chordFilter);
+                chordFilter.connect(masterGain);
+
+                // Play dual oscillators per voice (Triangle + Sine with light detuning)
+                freqs.forEach((freq) => {
+                    const osc1 = audioCtx.createOscillator();
+                    const osc2 = audioCtx.createOscillator();
+                    osc1.type = 'triangle';
+                    osc2.type = 'sine';
+
+                    osc1.frequency.setValueAtTime(freq, now);
+                    osc2.frequency.setValueAtTime(freq * 1.002, now); // soft chorus detune
+
+                    osc1.connect(chordGain);
+                    osc2.connect(chordGain);
+
+                    osc1.start(now);
+                    osc2.start(now);
+                    osc1.stop(now + durationSec);
+                    osc2.stop(now + durationSec);
+                });
+
+                // Sprinkle 2-3 relaxing kalimba/bell chimes
+                scheduleGentleChimes(now, durationSec);
+            } catch(e) {
+                console.warn('Game BGM error:', e);
+            }
+        }
+
+        function scheduleGentleChimes(startTime, durationSec) {
+            try {
+                const masterGain = getBgmMasterGain();
+                const chimeCount = 2 + Math.floor(Math.random() * 2);
+                for (let i = 0; i < chimeCount; i++) {
+                    const delay = 0.7 + Math.random() * (durationSec - 1.5);
+                    const chimeTime = startTime + delay;
+                    const freq = CHILL_BELL_FREQS[Math.floor(Math.random() * CHILL_BELL_FREQS.length)];
+
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, chimeTime);
+
+                    gain.gain.setValueAtTime(0.0001, chimeTime);
+                    gain.gain.linearRampToValueAtTime(0.035, chimeTime + 0.03);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, chimeTime + 1.2);
+
+                    osc.connect(gain);
+                    gain.connect(masterGain);
+
+                    osc.start(chimeTime);
+                    osc.stop(chimeTime + 1.3);
+                }
+            } catch(e) {}
+        }
+
+        function tickRelaxingGameBGM() {
+            if (!isGameBgmPlaying || !isGameBgmEnabled) return;
+            const chord = LOFI_CHORDS[chordStep % LOFI_CHORDS.length];
+            chordStep++;
+            playRelaxingChord(chord, 3.9);
+        }
+
+        function startRelaxingGameBGM() {
+            if (!isGameBgmEnabled) {
+                updateGameBgmUI();
+                return;
+            }
+            if (isGameBgmPlaying) return;
+
+            try {
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                isGameBgmPlaying = true;
+                const masterGain = getBgmMasterGain();
+                masterGain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+                masterGain.gain.linearRampToValueAtTime(gameBgmVolume, audioCtx.currentTime + 0.6);
+
+                updateGameBgmUI();
+                tickRelaxingGameBGM();
+
+                if (gameBgmTimer) clearInterval(gameBgmTimer);
+                gameBgmTimer = setInterval(() => {
+                    if (isGameBgmPlaying && isGameBgmEnabled) {
+                        tickRelaxingGameBGM();
+                    }
+                }, 3800);
+            } catch(e) {
+                console.warn('Không thể phát nhạc nền game:', e);
+            }
+        }
+
+        function stopRelaxingGameBGM() {
+            isGameBgmPlaying = false;
+            if (gameBgmTimer) {
+                clearInterval(gameBgmTimer);
+                gameBgmTimer = null;
+            }
+            if (gameBgmMasterGain && audioCtx) {
+                try {
+                    gameBgmMasterGain.gain.setValueAtTime(gameBgmMasterGain.gain.value, audioCtx.currentTime);
+                    gameBgmMasterGain.gain.linearRampToValueAtTime(0.0001, audioCtx.currentTime + 0.5);
+                } catch(e) {}
+            }
+            updateGameBgmUI();
+        }
+
+        function toggleGameBGM() {
+            isGameBgmEnabled = !isGameBgmEnabled;
+            localStorage.setItem('lan_game_bgm_enabled', isGameBgmEnabled ? '1' : '0');
+            
+            if (isGameBgmEnabled) {
+                if (gameBgmMasterGain && audioCtx) {
+                    gameBgmMasterGain.gain.setValueAtTime(gameBgmVolume, audioCtx.currentTime);
+                }
+                if (activeMainTab === 'games' || !document.getElementById('arcade-hub-modal').classList.contains('hidden')) {
+                    startRelaxingGameBGM();
+                }
+            } else {
+                stopRelaxingGameBGM();
+            }
+            updateGameBgmUI();
+        }
+
+        function setGameBgmVolume(val) {
+            gameBgmVolume = parseFloat(val);
+            localStorage.setItem('lan_game_bgm_volume', gameBgmVolume.toString());
+            const volPct = Math.round(gameBgmVolume * 100);
+            document.querySelectorAll('.game-bgm-volume-val').forEach(el => el.innerText = `${volPct}%`);
+            document.querySelectorAll('.game-bgm-slider').forEach(el => el.value = gameBgmVolume);
+            if (gameBgmMasterGain && audioCtx && isGameBgmEnabled) {
+                gameBgmMasterGain.gain.setValueAtTime(gameBgmVolume, audioCtx.currentTime);
+            }
+        }
+
+        function updateGameBgmUI() {
+            const headerBtn = document.getElementById('game-bgm-toggle-header');
+            const headerIcon = document.getElementById('game-bgm-header-icon');
+            const headerStatus = document.getElementById('game-bgm-header-status');
+
+            const arenaBtn = document.getElementById('game-bgm-toggle-arena');
+            const arenaIcon = document.getElementById('game-bgm-arena-icon');
+            const arenaStatus = document.getElementById('game-bgm-arena-status');
+
+            const arcadeBtn = document.getElementById('game-bgm-toggle-arcade');
+            const arcadeIcon = document.getElementById('game-bgm-arcade-icon');
+            const arcadeStatus = document.getElementById('game-bgm-arcade-status');
+
+            const volPct = Math.round(gameBgmVolume * 100);
+            document.querySelectorAll('.game-bgm-volume-val').forEach(el => el.innerText = `${volPct}%`);
+            document.querySelectorAll('.game-bgm-slider').forEach(el => el.value = gameBgmVolume);
+
+            if (isGameBgmEnabled) {
+                if (headerBtn) {
+                    headerBtn.className = "px-2.5 py-1.5 rounded-xl bg-emerald-950/70 border border-emerald-500/50 text-emerald-400 hover:bg-emerald-900/60 font-bold text-xs shadow-md shadow-emerald-950 flex items-center gap-1.5 transition active:scale-95";
+                }
+                if (headerIcon) headerIcon.className = "fa-solid fa-music text-xs animate-pulse";
+                if (headerStatus) {
+                    headerStatus.innerHTML = `BẬT <span class="inline-flex gap-0.5 items-end h-2.5 ml-0.5"><span class="w-0.5 h-1.5 bg-emerald-400 rounded animate-pulse"></span><span class="w-0.5 h-2.5 bg-emerald-400 rounded animate-pulse" style="animation-delay:0.15s"></span><span class="w-0.5 h-2 bg-emerald-400 rounded animate-pulse" style="animation-delay:0.3s"></span></span>`;
+                }
+
+                if (arenaBtn) {
+                    arenaBtn.className = "font-bold flex items-center gap-1.5 transition text-emerald-400 hover:text-emerald-300";
+                }
+                if (arenaIcon) arenaIcon.className = "fa-solid fa-music text-xs animate-pulse";
+                if (arenaStatus) arenaStatus.innerText = "Nhạc Game: BẬT";
+
+                if (arcadeBtn) {
+                    arcadeBtn.className = "px-2.5 py-1 rounded-lg bg-emerald-950/80 border border-emerald-500/40 text-xs text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1.5 transition";
+                }
+                if (arcadeIcon) arcadeIcon.className = "fa-solid fa-music text-[11px] animate-pulse";
+                if (arcadeStatus) arcadeStatus.innerText = "Nhạc: BẬT";
+            } else {
+                if (headerBtn) {
+                    headerBtn.className = "px-2.5 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-400 hover:text-slate-200 font-bold text-xs flex items-center gap-1.5 transition active:scale-95";
+                }
+                if (headerIcon) headerIcon.className = "fa-solid fa-volume-xmark text-xs";
+                if (headerStatus) headerStatus.innerText = "TẮT";
+
+                if (arenaBtn) {
+                    arenaBtn.className = "font-bold flex items-center gap-1.5 transition text-slate-400 hover:text-slate-300";
+                }
+                if (arenaIcon) arenaIcon.className = "fa-solid fa-volume-xmark text-xs";
+                if (arenaStatus) arenaStatus.innerText = "Nhạc Game: TẮT";
+
+                if (arcadeBtn) {
+                    arcadeBtn.className = "px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 text-xs text-slate-400 hover:text-slate-200 font-bold flex items-center gap-1.5 transition";
+                }
+                if (arcadeIcon) arcadeIcon.className = "fa-solid fa-volume-xmark text-[11px]";
+                if (arcadeStatus) arcadeStatus.innerText = "Nhạc: TẮT";
+            }
+        }
+
+        // ==========================================
         // CLIENT STATE & SOCKET CONNECTION
         // ==========================================
         let socket = null;
@@ -1417,6 +1695,15 @@
                     }
                 }
             });
+
+            // Tự động phát nhạc nhẹ thư giãn khi vào Khu Trò Chơi
+            if (tab === 'games') {
+                if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+                startRelaxingGameBGM();
+            } else if (tab === 'music') {
+                // Tắt nhạc nền game khi quay lại phòng nhạc chính để bài hát YouTube/MP3 phát trọn vẹn
+                stopRelaxingGameBGM();
+            }
         }
 
         function selectGame(game) {
@@ -1435,6 +1722,10 @@
             document.getElementById('active-game-title').innerText = titles[game] || 'Trò Chơi';
             const zoomBox = document.getElementById('board-zoom-box');
             if (zoomBox) zoomBox.classList.toggle('hidden', !['caro', 'cotuong'].includes(game));
+
+            // Đảm bảo nhạc thư giãn đang phát khi chơi game
+            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+            startRelaxingGameBGM();
         }
 
         function exitActiveGame() {
@@ -1457,6 +1748,12 @@
             const m = document.getElementById('arcade-hub-modal');
             m.classList.toggle('hidden');
             m.classList.toggle('flex');
+            if (!m.classList.contains('hidden')) {
+                if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+                startRelaxingGameBGM();
+            } else if (activeMainTab === 'music') {
+                stopRelaxingGameBGM();
+            }
         }
 
         function toggleQrModal() {
@@ -1549,6 +1846,18 @@
         // INIT SOCKET & LISTENERS
         // ==========================================
         function initApp() {
+            updateGameBgmUI();
+
+            // Mở khóa AudioContext và tự động phát nhạc game khi người dùng click
+            window.addEventListener('click', () => {
+                if (audioCtx && audioCtx.state === 'suspended') {
+                    audioCtx.resume().catch(()=>{});
+                }
+                if (activeMainTab === 'games' && isGameBgmEnabled && !isGameBgmPlaying) {
+                    startRelaxingGameBGM();
+                }
+            }, { passive: true });
+
             if (!myName) {
                 myName = prompt("Nhập tên hiển thị của bạn (Nhập 'TX' để nhận quyền Admin):", "Thành viên LAN") || 'Thành viên LAN';
                 myName = myName.trim();
