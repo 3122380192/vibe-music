@@ -152,9 +152,15 @@ app.get('/api/song-meta', async (req, res) => {
 app.get('/api/bot/random', async (req, res) => {
     try {
         const by = req.query.by || 'Bot @HiFiAudiobot';
-        const song = await queueRandomSong(by);
+        const playNow = req.query.playNow === 'true' || req.query.playNow === '1';
+        let song;
+        if (playNow || !currentSong) {
+            song = await playRandomSongDirectly(by);
+        } else {
+            song = await queueRandomSong(by);
+        }
         if (song) {
-            res.json({ success: true, song });
+            res.json({ success: true, song, playedImmediately: playNow || !currentSong });
         } else {
             res.status(500).json({ success: false, message: 'Không thể thêm bài ngẫu nhiên lúc này' });
         }
@@ -325,33 +331,51 @@ function playSong(song) {
     });
 }
 
-async function playNextSong() {
+let lastSongSkipTime = 0;
+
+async function playRandomSongDirectly(requestedBy = 'Hệ Thống (Auto DJ)') {
+    const track = RANDOM_CURATED_TRACKS[Math.floor(Math.random() * RANDOM_CURATED_TRACKS.length)];
+    let ytId = track.youtubeId || (track.query ? extractYouTubeId(track.query) : null);
+    if (!ytId && track.query) {
+        ytId = await searchYouTube(track.query);
+    }
+    if (!ytId) ytId = 'Zzn9-ATB9aU'; // Fallback Nàng Thơ
+
+    const meta = await fetchYouTubeMeta(ytId);
+    const newSong = {
+        id: 'song_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+        title: track.title || meta.title,
+        artist: track.artist || meta.artist,
+        url: `https://www.youtube.com/watch?v=${ytId}`,
+        youtubeId: ytId,
+        audioUrl: null,
+        thumbnail: meta.thumbnail || `https://i.ytimg.com/vi/${ytId}/hqdefault.jpg`,
+        duration: 240,
+        addedBy: requestedBy,
+        addedById: 'bot',
+        addedAt: Date.now(),
+        votes: {},
+        voteScore: 1
+    };
+
+    playSong(newSong);
+    return newSong;
+}
+
+async function playNextSong(forceSkip = false) {
+    const now = Date.now();
+    if (!forceSkip && now - lastSongSkipTime < 1500) {
+        return; // Tránh spam skip khi nhiều client báo bài kết thúc cùng lúc
+    }
+    lastSongSkipTime = now;
+
     if (playlist.length > 0) {
         const nextSong = playlist.shift();
         playSong(nextSong);
         io.emit('playlist:update', playlist);
     } else {
-        // Tự động thêm bài ngẫu nhiên từ kho curated để phòng không bao giờ bị im lặng
-        const autoSong = await queueRandomSong('Hệ Thống (Auto DJ)');
-        if (!autoSong) {
-            currentSong = null;
-            playback.isPlaying = false;
-            playback.startedAt = 0;
-            playback.elapsedAtPause = 0;
-            playback.duration = 0;
-
-            io.emit('playback:change', {
-                currentSong: null,
-                isPlaying: false,
-                currentTime: 0,
-                serverTime: Date.now()
-            });
-
-            io.emit('chat:system', {
-                text: '📭 Hàng chờ bài hát đã hết. Hãy thêm bài mới nhé!',
-                time: new Date().toLocaleTimeString('vi-VN')
-            });
-        }
+        // Tự động phát ngay 1 bài ngẫu nhiên từ kho curated để phòng luôn có nhạc
+        await playRandomSongDirectly('Hệ Thống (Auto DJ)');
     }
 }
 
@@ -364,25 +388,19 @@ if (playlist.length > 0) {
 // KHO NHẠC RANDOM & HỖ TRỢ BOT TELEGRAM
 // ==========================================
 const RANDOM_CURATED_TRACKS = [
-    { title: "Nàng Thơ", artist: "Hoàng Dũng", query: "Nàng Thơ Hoàng Dũng" },
-    { title: "Ghé Qua", artist: "Dick x PC x Tofu", query: "Ghé Qua Dick PC Tofu" },
-    { title: "Từng Là", artist: "Vũ Cát Tường", query: "Từng Là Vũ Cát Tường" },
-    { title: "Lạ Lùng", artist: "Vũ.", query: "Lạ Lùng Vũ" },
-    { title: "Một Đêm Say", artist: "Thịnh Suy", query: "Một Đêm Say Thịnh Suy" },
-    { title: "Bình Yên", artist: "Vũ. ft. Binz", query: "Bình Yên Vũ Binz" },
-    { title: "Chuyện Đôi Ta", artist: "Emcee L ft Muộii", query: "Chuyện Đôi Ta Emcee L" },
-    { title: "Ánh Sao Và Bầu Trời", artist: "T.R.I", query: "Ánh Sao Và Bầu Trời T.R.I" },
-    { title: "Until I Found You", artist: "Stephen Sanchez", query: "Until I Found You Stephen Sanchez" },
-    { title: "Golden Hour", artist: "JVKE", query: "Golden Hour JVKE" },
-    { title: "Double Take", artist: "dhruv", query: "Double Take dhruv" },
-    { title: "Death Bed (Coffee for Your Head)", artist: "Powfu", query: "Powfu death bed coffee for your head" },
-    { title: "Snowman", artist: "Sia", query: "Snowman Sia" },
-    { title: "3107 3", artist: "W/n x Nâu x Duongg x Titie", query: "3107 3 W/n Nâu Duongg Titie" },
-    { title: "Đi Về Nhà", artist: "Đen x JustaTee", query: "Đi Về Nhà Đen JustaTee" },
-    { title: "Bài Này Chill Phết", artist: "Đen ft. MIN", query: "Bài Này Chill Phết Đen MIN" },
-    { title: "Attention", artist: "Charlie Puth", query: "Attention Charlie Puth" },
-    { title: "Snooze", artist: "SZA", query: "Snooze SZA" },
-    { title: "Lo-fi Hip Hop Radio - Beats to Relax/Study to", artist: "Lofi Girl", query: "Lofi hip hop radio beats to relax study to" }
+    { title: "Nàng Thơ", artist: "Hoàng Dũng", youtubeId: "Zzn9-ATB9aU", query: "Nàng Thơ Hoàng Dũng" },
+    { title: "Ghé Qua", artist: "Dick x PC x Tofu", youtubeId: "zEWSSod0zTY", query: "Ghé Qua Dick PC Tofu" },
+    { title: "Từng Là", artist: "Vũ Cát Tường", youtubeId: "i4qZmKSFYvI", query: "Từng Là Vũ Cát Tường" },
+    { title: "Lạ Lùng", artist: "Vũ.", youtubeId: "F5tS5m86bOI", query: "Lạ Lùng Vũ" },
+    { title: "Một Đêm Say", artist: "Thịnh Suy", youtubeId: "Csuk1Wm5W0E", query: "Một Đêm Say Thịnh Suy" },
+    { title: "Đi Về Nhà", artist: "Đen x JustaTee", youtubeId: "vTJdVE_gjI0", query: "Đi Về Nhà Đen JustaTee" },
+    { title: "Bài Này Chill Phết", artist: "Đen ft. MIN", youtubeId: "ddaEtFOsFeM", query: "Bài Này Chill Phết Đen MIN" },
+    { title: "Snowman", artist: "Sia", youtubeId: "gset79KMmt0", query: "Snowman Sia" },
+    { title: "Attention", artist: "Charlie Puth", youtubeId: "nfs8NYg7yQM", query: "Attention Charlie Puth" },
+    { title: "Golden Hour", artist: "JVKE", youtubeId: "PEM0Vs8jf1w", query: "Golden Hour JVKE" },
+    { title: "Chillhop Radio - Jazzy Lofi", artist: "Chillhop Music", youtubeId: "5yx6BWlEVcY", query: "Chillhop Radio Jazzy Lofi" },
+    { title: "Chuyện Đôi Ta", artist: "Emcee L ft Muộii", youtubeId: "1eE96p16C7w", query: "Chuyện Đôi Ta Emcee L" },
+    { title: "Ánh Sao Và Bầu Trời", artist: "T.R.I", youtubeId: "w2d_B4g8lD4", query: "Ánh Sao Và Bầu Trời T.R.I" }
 ];
 
 async function addSongFromSource(query, title = null, artist = null, audioUrl = null, addedBy = 'Bot @HiFiAudiobot') {
@@ -450,7 +468,12 @@ async function addSongFromSource(query, title = null, artist = null, audioUrl = 
 
 async function queueRandomSong(requestedBy = 'Bot @HiFiAudiobot') {
     const track = RANDOM_CURATED_TRACKS[Math.floor(Math.random() * RANDOM_CURATED_TRACKS.length)];
-    return await addSongFromSource(track.query, track.title, track.artist, null, requestedBy);
+    let ytId = track.youtubeId || (track.query ? extractYouTubeId(track.query) : null);
+    if (!ytId && track.query) {
+        ytId = await searchYouTube(track.query);
+    }
+    if (!ytId) ytId = 'Zzn9-ATB9aU';
+    return await addSongFromSource(track.query || `https://www.youtube.com/watch?v=${ytId}`, track.title, track.artist, null, requestedBy);
 }
 
 // ==========================================
@@ -624,13 +647,21 @@ async function handleTelegramMessage(msg) {
     }
 
     // 3. Lệnh /random hoặc các từ khóa ngẫu nhiên
-    if (cleanText.startsWith('/random') || cleanText.toLowerCase() === 'random' || cleanText.toLowerCase() === 'bài khác' || cleanText.toLowerCase() === 'nhạc ngẫu nhiên') {
-        const randomSong = await queueRandomSong(`Telegram (${sender})`);
+    const lowerText = cleanText.toLowerCase();
+    if (cleanText.startsWith('/random') || cleanText.startsWith('/rd') || cleanText.startsWith('/playrandom') || lowerText === 'random' || lowerText === 'rd' || lowerText === 'bài khác' || lowerText === 'nhạc ngẫu nhiên' || lowerText === 'bật bài ngẫu nhiên') {
+        const isNow = cleanText.includes('now') || cleanText.includes('ngay') || cleanText.startsWith('/playrandom');
+        let randomSong;
+        if (isNow || !currentSong) {
+            randomSong = await playRandomSongDirectly(`Telegram (${sender})`);
+        } else {
+            randomSong = await queueRandomSong(`Telegram (${sender})`);
+        }
+
         if (randomSong) {
             await sendTelegramMessage(chatId, `🎲 <b>ĐÃ CHỌN NGẪU NHIÊN BÀI HÁT:</b>\n\n` +
                 `🎵 <b>${randomSong.title}</b>\n` +
                 `👤 <b>${randomSong.artist}</b>\n` +
-                `👉 <i>Đang phát / chờ phát trong phòng nhạc!</i>\n` +
+                `👉 <i>${isNow ? '🔥 ĐANG PHÁT NGAY TRÊN HỆ THỐNG!' : (currentSong && currentSong.id === randomSong.id ? '🔥 Đang phát ngay!' : '📋 Đã đưa vào danh sách chờ!')}</i>\n` +
                 `🌐 <a href="${globalOnlineUrl || getPrimaryLanUrl()}">Vào phòng nghe ngay</a>`, msg.message_id);
         }
         return;
@@ -657,9 +688,9 @@ async function handleTelegramMessage(msg) {
         return;
     }
 
-    // 5. Lệnh /skip hoặc /next
-    if (cleanText.startsWith('/skip') || cleanText.startsWith('/next')) {
-        playNextSong();
+    // 5. Lệnh /skip hoặc /next hoặc chuyển bài
+    if (cleanText.startsWith('/skip') || cleanText.startsWith('/next') || cleanText.startsWith('/chuyenbai') || lowerText === 'skip' || lowerText === 'next' || lowerText === 'chuyển bài' || lowerText === 'bỏ qua' || lowerText === 'đổi bài') {
+        await playNextSong(true);
         await sendTelegramMessage(chatId, `⏭️ <b>Đã bỏ qua bài hát!</b> Đang phát bài tiếp theo...`, msg.message_id);
         return;
     }
@@ -1624,20 +1655,51 @@ io.on('connection', (socket) => {
         io.emit('playlist:update', playlist);
     });
 
-    // 4. ĐIỀU KHIỂN PHÁT NHẠC (ADMIN)
+    // 4. ĐIỀU KHIỂN PHÁT NHẠC (NEXT, TOGGLE, SEEK, PREV)
     socket.on('control:action', (data) => {
         const user = users.get(socket.id);
         if (!user) return;
-        if (socket.id !== adminSocketId && user.username.toUpperCase() !== 'TX') {
-            socket.emit('control:error', { message: 'Chỉ Admin mới có quyền điều khiển!' });
+
+        const action = data && data.action;
+        const isTxOrAdmin = user.isAdmin || user.username.toUpperCase() === 'TX' || user.username.toLowerCase().includes('admin') || socket.id === adminSocketId;
+
+        // Bỏ qua bài hát (Next) & Phát lại từ đầu (Prev): Cho phép mọi người dùng trong phòng thực hiện
+        if (action === 'next') {
+            playNextSong(true);
+            io.emit('chat:system', {
+                text: `⏭️ ${user.username} đã bấm chuyển bài hát kế tiếp!`,
+                time: new Date().toLocaleTimeString('vi-VN')
+            });
             return;
         }
 
-        const action = data && data.action;
+        if (action === 'prev') {
+            if (currentSong) {
+                playback.startedAt = Date.now();
+                playback.elapsedAtPause = 0;
+                io.emit('playback:sync', {
+                    isPlaying: playback.isPlaying,
+                    currentTime: 0,
+                    serverTime: Date.now()
+                });
+                io.emit('chat:system', {
+                    text: `⏮️ ${user.username} đã phát lại bài hát từ đầu.`,
+                    time: new Date().toLocaleTimeString('vi-VN')
+                });
+            }
+            return;
+        }
+
+        // Tạm dừng / Phát tiếp (Toggle) & Tua nhạc (Seek): Cần quyền Admin hoặc khi phòng ít người (<= 2)
+        if (!isTxOrAdmin && users.size > 2) {
+            socket.emit('control:error', { message: 'Chỉ Admin mới có quyền tạm dừng hoặc tua nhạc!' });
+            return;
+        }
+
         switch (action) {
             case 'toggle':
                 if (!currentSong) {
-                    if (playlist.length > 0) playNextSong();
+                    if (playlist.length > 0) playNextSong(true);
                     return;
                 }
                 if (playback.isPlaying) {
@@ -1652,9 +1714,6 @@ io.on('connection', (socket) => {
                     currentTime: getCurrentPlaybackTime(),
                     serverTime: Date.now()
                 });
-                break;
-            case 'next':
-                playNextSong();
                 break;
             case 'seek':
                 if (currentSong && typeof data.time === 'number') {

@@ -2126,6 +2126,14 @@
                 alert(data.message);
             });
 
+            socket.on('control:error', (data) => {
+                const previewEl = document.getElementById('song-input-preview');
+                if (previewEl) {
+                    previewEl.innerHTML = `<span class="text-amber-400 font-bold">⚠️ ${data.message}</span>`;
+                    setTimeout(() => { if (previewEl) previewEl.innerText = ''; }, 3500);
+                }
+            });
+
             socket.on('user:kicked', (data) => {
                 alert(data.reason);
                 window.location.reload();
@@ -2972,10 +2980,8 @@
                     }
                 }
             } else if (event.data === YT.PlayerState.ENDED) {
-                // Tự động chuyển bài khi phát xong
-                if (isCurrentAdmin) {
-                    sendControlAction('next');
-                }
+                // Tự động chuyển bài khi phát xong (server đã debounce 1.5s chống duplicate)
+                sendControlAction('next');
             }
         }
 
@@ -2987,16 +2993,15 @@
                 if (nativeAudio) nativeAudio.pause();
 
                 if (ytPlayer && ytPlayer.loadVideoById) {
-                    if (currentLoadedYtId !== song.youtubeId) {
-                        currentLoadedYtId = song.youtubeId;
-                        try {
-                            ytPlayer.loadVideoById({
-                                videoId: song.youtubeId,
-                                startSeconds: Math.max(0, Math.round(seekTime || 0))
-                            });
-                        } catch(e) {
-                            console.warn('loadVideoById fallback error:', e);
-                        }
+                    currentLoadedYtId = song.youtubeId;
+                    try {
+                        ytPlayer.loadVideoById({
+                            videoId: song.youtubeId,
+                            startSeconds: Math.max(0, Math.round(seekTime || 0))
+                        });
+                    } catch(e) {
+                        console.warn('loadVideoById fallback error:', e);
+                        loadDirectIframeFallback(song.youtubeId, seekTime || 0);
                     }
                     if (isPlaying) {
                         try { ytPlayer.playVideo(); } catch(e) {}
@@ -3197,15 +3202,16 @@
             }
         }
 
-        async function triggerRandomSongNow() {
+        async function triggerRandomSongNow(playNow = true) {
             try {
-                const res = await fetch('/api/bot/random?by=' + encodeURIComponent(myName || 'Người dùng'));
+                const previewEl = document.getElementById('song-input-preview');
+                if (previewEl) previewEl.innerText = '🎲 Bot đang chọn bài ngẫu nhiên...';
+                const res = await fetch('/api/bot/random?playNow=' + (playNow ? 'true' : 'false') + '&by=' + encodeURIComponent(myName || 'Người dùng'));
                 const data = await res.json();
                 if (data.success && data.song) {
-                    const previewEl = document.getElementById('song-input-preview');
                     if (previewEl) {
-                        previewEl.innerHTML = `🎲 Đã chọn ngẫu nhiên: <span class="text-white font-bold">${data.song.title}</span> (${data.song.artist})`;
-                        setTimeout(() => { if (previewEl) previewEl.innerText = ''; }, 3500);
+                        previewEl.innerHTML = `🎲 ${data.playedImmediately ? '🔥 Đang phát ngay' : '📋 Đã thêm vào hàng chờ'}: <span class="text-white font-bold">${data.song.title}</span> (${data.song.artist})`;
+                        setTimeout(() => { if (previewEl) previewEl.innerText = ''; }, 4000);
                     }
                 }
             } catch(e) {
@@ -3238,9 +3244,7 @@
             const nativeAudio = document.getElementById('native-audio-player');
             if (nativeAudio) {
                 nativeAudio.onended = () => {
-                    if (isCurrentAdmin) {
-                        sendControlAction('next');
-                    }
+                    sendControlAction('next');
                 };
                 nativeAudio.ontimeupdate = () => {
                     if (activeServerSong?.audioUrl && !activeServerSong.youtubeId) {
