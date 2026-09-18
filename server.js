@@ -89,6 +89,34 @@ app.get('/api/qr', async (req, res) => {
     }
 });
 
+// API nhận diện metadata bài hát nhanh
+app.get('/api/song-meta', async (req, res) => {
+    try {
+        const query = (req.query.q || '').trim();
+        if (!query) return res.json({ success: false, message: 'Chưa có thông tin tìm kiếm' });
+
+        let ytId = extractYouTubeId(query);
+        if (!ytId) {
+            ytId = await searchYouTube(query);
+        }
+
+        if (ytId) {
+            const meta = await fetchYouTubeMeta(ytId);
+            return res.json({
+                success: true,
+                youtubeId: ytId,
+                title: meta.title,
+                artist: meta.artist,
+                thumbnail: meta.thumbnail,
+                url: `https://www.youtube.com/watch?v=${ytId}`
+            });
+        }
+        res.json({ success: false, message: 'Không tìm thấy bài hát phù hợp' });
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
 // ==========================================
 // TRẠNG THÁI PHÒNG NHẠC (MUSIC STATE)
 // ==========================================
@@ -252,11 +280,68 @@ setInterval(() => {
     }
 }, 3000);
 
-function extractYouTubeId(url) {
-    if (!url) return null;
-    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=|shorts\/)([^#&?]*).*/;
-    const match = url.match(regExp);
-    return (match && match[2].length === 11) ? match[2] : null;
+function extractYouTubeId(urlStr) {
+    if (!urlStr || typeof urlStr !== 'string') return null;
+    urlStr = urlStr.trim();
+    try {
+        const parsed = new URL(urlStr);
+        if (parsed.hostname.includes('youtube.com')) {
+            if (parsed.searchParams.get('v')) return parsed.searchParams.get('v');
+            if (parsed.pathname.startsWith('/embed/')) return parsed.pathname.split('/')[2];
+            if (parsed.pathname.startsWith('/shorts/')) return parsed.pathname.split('/')[2];
+            if (parsed.pathname.startsWith('/v/')) return parsed.pathname.split('/')[2];
+        }
+        if (parsed.hostname.includes('youtu.be')) {
+            const id = parsed.pathname.slice(1).split('/')[0].split('?')[0];
+            if (id && id.length === 11) return id;
+        }
+    } catch(e) {}
+    const match = urlStr.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/))([\w-]{11})/);
+    if (match && match[1]) return match[1];
+    if (/^[a-zA-Z0-9_-]{11}$/.test(urlStr)) return urlStr;
+    return null;
+}
+
+async function searchYouTube(query) {
+    try {
+        const res = await fetch('https://www.youtube.com/results?search_query=' + encodeURIComponent(query), {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
+        });
+        const html = await res.text();
+        const match = html.match(/\/watch\?v=([a-zA-Z0-9_-]{11})/);
+        if (match) return match[1];
+    } catch(e) {}
+    return null;
+}
+
+async function fetchYouTubeMeta(ytId) {
+    try {
+        const res = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${ytId}&format=json`);
+        if (res.ok) {
+            const data = await res.json();
+            return {
+                title: data.title || `YouTube Track [${ytId}]`,
+                artist: data.author_name || 'YouTube Video',
+                thumbnail: `https://i.ytimg.com/vi/${ytId}/hqdefault.jpg`
+            };
+        }
+    } catch(e) {}
+    try {
+        const res = await fetch(`https://noembed.com/embed?url=https://www.youtube.com/watch?v=${ytId}`);
+        if (res.ok) {
+            const data = await res.json();
+            return {
+                title: data.title || `YouTube Track [${ytId}]`,
+                artist: data.author_name || 'YouTube Video',
+                thumbnail: `https://i.ytimg.com/vi/${ytId}/hqdefault.jpg`
+            };
+        }
+    } catch(e) {}
+    return {
+        title: `YouTube Track [${ytId}]`,
+        artist: 'YouTube Video',
+        thumbnail: `https://i.ytimg.com/vi/${ytId}/hqdefault.jpg`
+    };
 }
 
 // ==========================================
@@ -933,24 +1018,32 @@ io.on('connection', (socket) => {
         });
     });
 
-    // 3. THÊM BÀI HÁT
-    socket.on('song:add', (data) => {
+    // 3. THÊM BÀI HÁT (TỰ ĐỘNG NHẬN DIỆN LINK & TÌM KIẾM TÊN BÀI HÁT)
+    socket.on('song:add', async (data) => {
         const user = users.get(socket.id);
         const query = data && data.query ? data.query.trim() : '';
         if (!user || !query) return;
 
-        const ytId = extractYouTubeId(query);
+        let ytId = extractYouTubeId(query);
+        const isAudioUrl = query.match(/\.(mp3|wav|ogg|m4a)(\?.*)?$/i);
         let newSong = null;
 
+        if (!ytId && !isAudioUrl) {
+            // Người dùng nhập tên bài hát hoặc link dạng khác -> tìm kiếm tự động trên YouTube
+            ytId = await searchYouTube(query);
+        }
+
         if (ytId) {
+            // Lấy thông tin thật: tiêu đề, nghệ sĩ, ảnh bìa
+            const meta = await fetchYouTubeMeta(ytId);
             newSong = {
                 id: 'song_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
-                title: data.title || `YouTube Track [${ytId}]`,
-                artist: 'YouTube Video',
-                url: query,
+                title: data.title || meta.title,
+                artist: data.artist || meta.artist,
+                url: `https://www.youtube.com/watch?v=${ytId}`,
                 youtubeId: ytId,
                 audioUrl: null,
-                thumbnail: `https://i.ytimg.com/vi/${ytId}/hqdefault.jpg`,
+                thumbnail: meta.thumbnail,
                 duration: 240,
                 addedBy: user.username,
                 addedById: user.id,
@@ -958,15 +1051,14 @@ io.on('connection', (socket) => {
                 votes: { [user.id]: 1 },
                 voteScore: 1
             };
-        } else {
-            const isAudioUrl = query.match(/\.(mp3|wav|ogg|m4a)(\?.*)?$/i);
+        } else if (isAudioUrl) {
             newSong = {
                 id: 'song_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
-                title: query,
-                artist: 'Âm thanh văn phòng',
+                title: data.title || query.split('/').pop().split('?')[0] || 'Tệp âm thanh',
+                artist: 'Âm thanh trực tiếp',
                 url: query,
                 youtubeId: null,
-                audioUrl: isAudioUrl ? query : null,
+                audioUrl: query,
                 thumbnail: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&h=300&fit=crop&q=80',
                 duration: 200,
                 addedBy: user.username,
@@ -975,6 +1067,9 @@ io.on('connection', (socket) => {
                 votes: { [user.id]: 1 },
                 voteScore: 1
             };
+        } else {
+            socket.emit('game:toast', { message: 'Không thể nhận diện bài hát hoặc link YouTube này!' });
+            return;
         }
 
         if (!currentSong) {
@@ -986,7 +1081,7 @@ io.on('connection', (socket) => {
         }
 
         io.emit('chat:system', {
-            text: `🎵 ${user.username} đã đề xuất: "${newSong.title}"`,
+            text: `🎵 ${user.username} đã đề xuất: "${newSong.title}" (${newSong.artist})`,
             time: new Date().toLocaleTimeString('vi-VN')
         });
     });

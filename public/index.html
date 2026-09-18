@@ -27,6 +27,8 @@
     </script>
     <!-- FontAwesome CDN -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- YouTube IFrame API -->
+    <script src="https://www.youtube.com/iframe_api"></script>
     <!-- Socket.io Client -->
     <script src="/socket.io/socket.io.js"></script>
 
@@ -333,34 +335,45 @@
                     <div class="absolute -right-16 -top-16 w-60 h-60 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
                     <!-- Song Info -->
-                    <div class="flex items-center gap-4 mb-4">
-                        <div class="relative w-20 h-20 sm:w-24 sm:h-24 rounded-xl overflow-hidden bg-slate-800 border border-slate-700 shadow-md flex-shrink-0">
-                            <img id="current-song-thumb" src="https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&h=300&fit=crop&q=80" alt="Thumbnail" class="w-full h-full object-cover">
-                            <div id="playing-indicator-badge" class="absolute bottom-1 right-1 bg-cyan-500 text-slate-950 text-[10px] font-black px-1.5 py-0.5 rounded shadow">
-                                LIVE
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center gap-3">
+                            <div class="relative w-12 h-12 rounded-xl overflow-hidden bg-slate-800 border border-slate-700 shadow-md flex-shrink-0">
+                                <img id="current-song-thumb" src="https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&h=300&fit=crop&q=80" alt="Thumbnail" class="w-full h-full object-cover">
+                            </div>
+                            <div class="min-w-0">
+                                <div class="text-[10px] font-semibold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5">
+                                    <i class="fa-solid fa-compact-disc animate-spin text-xs"></i> Đang phát trên toàn mạng LAN
+                                </div>
+                                <h2 id="current-song-title" class="text-sm sm:text-base font-bold text-white truncate max-w-sm sm:max-w-md">
+                                    Đang đồng bộ danh sách phát...
+                                </h2>
+                                <p id="current-song-artist" class="text-xs text-slate-400 truncate">
+                                    Yêu cầu bởi: <span id="current-song-requester" class="text-cyan-300 font-semibold">Hệ thống</span>
+                                </p>
                             </div>
                         </div>
-                        <div class="flex-1 min-w-0">
-                            <div class="text-xs font-semibold text-cyan-400 uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                                <i class="fa-solid fa-compact-disc animate-spin text-xs"></i> Đang phát trên toàn mạng LAN
-                            </div>
-                            <h2 id="current-song-title" class="text-base sm:text-xl font-bold text-white truncate">
-                                Đang đồng bộ danh sách phát...
-                            </h2>
-                            <p id="current-song-artist" class="text-xs sm:text-sm text-slate-400 truncate mt-0.5">
-                                Yêu cầu bởi: <span id="current-song-requester" class="text-cyan-300 font-semibold">Hệ thống</span>
-                            </p>
+
+                        <!-- Player View Mode Toggles -->
+                        <div class="flex items-center gap-1.5">
+                            <button onclick="toggleVideoView()" id="btn-toggle-video" class="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-[11px] font-bold text-slate-300 transition flex items-center gap-1" title="Ẩn/Hiện màn hình video">
+                                <i class="fa-solid fa-tv"></i> <span id="video-toggle-lbl">Video</span>
+                            </button>
+                            <button onclick="forceSyncAudio()" class="px-2.5 py-1 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-400 border border-cyan-500/40 text-[11px] font-bold transition flex items-center gap-1" title="Bật âm thanh nếu trình duyệt chặn tự phát">
+                                <i class="fa-solid fa-volume-high"></i> Bật Tiếng
+                            </button>
                         </div>
                     </div>
 
-                    <!-- Hidden Audio / YouTube Iframe Containers -->
-                    <div class="hidden">
-                        <audio id="native-audio-player" preload="auto"></audio>
-                        <div id="yt-player-container"></div>
+                    <!-- Embedded YouTube Player View -->
+                    <div id="yt-player-wrapper" class="relative w-full aspect-video rounded-xl overflow-hidden bg-black border border-slate-700/80 shadow-2xl mb-3">
+                        <div id="yt-player-target" class="w-full h-full"></div>
                     </div>
+
+                    <!-- Native Audio for MP3/Local Audio Files -->
+                    <audio id="native-audio-player" class="hidden" preload="auto"></audio>
 
                     <!-- Progress Bar -->
-                    <div class="space-y-1.5 mb-4">
+                    <div class="space-y-1 mb-3">
                         <div class="relative w-full h-2 bg-slate-800 rounded-full overflow-hidden cursor-pointer" onclick="handleSeekClick(event)">
                             <div id="playback-progress-bar" class="absolute left-0 top-0 bottom-0 bg-gradient-to-r from-cyan-400 to-purple-500 rounded-full w-0 transition-all duration-300"></div>
                         </div>
@@ -392,17 +405,19 @@
                 <!-- Right: Add Song & Chat -->
                 <div class="bg-darkCard border border-darkBorder rounded-2xl p-4 sm:p-5 shadow-xl flex flex-col justify-between">
                     <div>
-                        <h3 class="font-bold text-sm text-slate-200 mb-3 flex items-center gap-2">
-                            <i class="fa-solid fa-circle-plus text-cyan-400"></i> Đề xuất bài hát (YouTube / MP3)
+                        <h3 class="font-bold text-sm text-slate-200 mb-2 flex items-center gap-2">
+                            <i class="fa-solid fa-circle-plus text-cyan-400"></i> Đề xuất bài hát (Link YouTube / Tên bài hát)
                         </h3>
-                        <div class="flex gap-2 mb-3">
-                            <input type="text" id="song-query-input" placeholder="Dán link YouTube hoặc tên bài hát..." class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-cyan-500 transition">
-                            <button onclick="handleAddSong()" class="bg-primary hover:bg-primaryHover text-slate-950 font-bold px-3 py-2 rounded-xl text-xs sm:text-sm transition flex items-center gap-1">
+                        <div class="flex gap-2">
+                            <input type="text" id="song-query-input" oninput="handleSongInputDebounced()" onkeydown="if(event.key==='Enter') handleAddSong()" placeholder="Dán link YouTube (youtu.be/watch?v=) hoặc gõ tên bài hát..." class="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs sm:text-sm text-white focus:outline-none focus:border-cyan-500 transition">
+                            <button onclick="handleAddSong()" class="bg-primary hover:bg-primaryHover text-slate-950 font-bold px-3.5 py-2 rounded-xl text-xs sm:text-sm transition flex items-center gap-1 shadow-md">
                                 <i class="fa-solid fa-plus"></i> Thêm
                             </button>
                         </div>
-                        <p class="text-[11px] text-slate-400 leading-relaxed">
-                            💡 Mọi người trong phòng có thể Vote Up bài hát yêu thích. Bài nhiều vote sẽ tự động được ưu tiên phát trước!
+                        <!-- Real-time Recognition Preview -->
+                        <div id="song-input-preview" class="text-xs text-cyan-400 font-semibold mt-1.5 min-h-[18px]"></div>
+                        <p class="text-[11px] text-slate-400 leading-relaxed mt-1">
+                            💡 Hỗ trợ mọi link YouTube (Watch, Shorts, YouTu.be) hoặc tên bài hát. Hệ thống tự động nhận diện bài và tên tác giả!
                         </p>
                     </div>
 
@@ -1554,6 +1569,9 @@
                 document.getElementById('qr-image').src = `/api/qr?url=${encodeURIComponent(data.primaryLanUrl)}`;
                 updateAdminUI();
                 if (data.playlist) renderPlaylist(data.playlist);
+                if (data.currentSong) {
+                    updatePlaybackInfo(data.currentSong, data.playback?.isPlaying, data.playback?.currentTime || 0);
+                }
                 if (data.gameState) handleGameStateUpdate(data.gameState);
             });
 
@@ -1585,7 +1603,15 @@
             });
 
             socket.on('playback:change', (data) => {
-                updatePlaybackInfo(data.currentSong, data.isPlaying);
+                updatePlaybackInfo(data.currentSong, data.isPlaying, data.currentTime || 0);
+            });
+
+            socket.on('playback:sync', (data) => {
+                activeIsPlaying = data.isPlaying;
+                document.getElementById('play-pause-icon').className = data.isPlaying ? 'fa-solid fa-pause' : 'fa-solid fa-play';
+                if (activeServerSong) {
+                    syncPlayerWithSong(activeServerSong, data.isPlaying, data.currentTime);
+                }
             });
 
             socket.on('playback:heartbeat', (data) => {
@@ -2359,31 +2385,196 @@
         }
 
         // ==========================================
-        // MUSIC PLAYBACK & PLAYLIST
+        // REAL YOUTUBE PLAYER & AUDIO CONTROLLER
         // ==========================================
-        let currentSongDuration = 210;
+        let ytPlayer = null;
+        let ytApiReady = false;
+        let currentLoadedYtId = null;
+        let activeServerSong = null;
+        let activeIsPlaying = false;
+        let currentSongDuration = 240;
+        let isVideoExpanded = true;
+        let songInputDebounceTimer = null;
 
-        function updatePlaybackInfo(song, isPlaying) {
+        // YouTube IFrame API Callback
+        window.onYouTubeIframeAPIReady = function() {
+            ytApiReady = true;
+            initYouTubePlayer();
+        };
+
+        function initYouTubePlayer() {
+            if (!ytApiReady || typeof YT === 'undefined') return;
+            try {
+                ytPlayer = new YT.Player('yt-player-target', {
+                    height: '100%',
+                    width: '100%',
+                    host: 'https://www.youtube-nocookie.com',
+                    playerVars: {
+                        'autoplay': 1,
+                        'controls': 1,
+                        'enablejsapi': 1,
+                        'rel': 0,
+                        'playsinline': 1,
+                        'origin': window.location.origin
+                    },
+                    events: {
+                        'onReady': (event) => {
+                            try {
+                                event.target.unMute();
+                                event.target.setVolume(100);
+                            } catch(e) {}
+                            if (activeServerSong) {
+                                syncPlayerWithSong(activeServerSong, activeIsPlaying, 0);
+                            }
+                        },
+                        'onStateChange': onPlayerStateChange,
+                        'onError': (event) => {
+                            console.warn('YouTube playback error:', event.data);
+                            if (isCurrentAdmin) {
+                                // Tự động chuyển bài nếu video bị chặn nhúng hoặc bản quyền
+                                setTimeout(() => sendControlAction('next'), 2000);
+                            }
+                        }
+                    }
+                });
+            } catch(err) {
+                console.error('Lỗi khởi tạo YouTube player:', err);
+            }
+        }
+
+        function onPlayerStateChange(event) {
+            // Khi bài hát phát xong tự động chuyển bài tiếp theo
+            if (event.data === YT.PlayerState.ENDED) {
+                if (isCurrentAdmin) {
+                    sendControlAction('next');
+                }
+            } else if (event.data === YT.PlayerState.PLAYING) {
+                if (ytPlayer && ytPlayer.getDuration) {
+                    const dur = ytPlayer.getDuration();
+                    if (dur && dur > 10 && activeServerSong && currentSongDuration !== Math.round(dur)) {
+                        currentSongDuration = Math.round(dur);
+                        document.getElementById('playback-duration-time').innerText = formatTime(currentSongDuration);
+                        socket.emit('song:update_meta', { songId: activeServerSong.id, duration: dur });
+                    }
+                }
+            }
+        }
+
+        function syncPlayerWithSong(song, isPlaying, seekTime) {
+            if (!song) return;
+
+            if (song.youtubeId) {
+                const nativeAudio = document.getElementById('native-audio-player');
+                if (nativeAudio) nativeAudio.pause();
+
+                if (ytPlayer && ytPlayer.loadVideoById) {
+                    if (currentLoadedYtId !== song.youtubeId) {
+                        currentLoadedYtId = song.youtubeId;
+                        ytPlayer.loadVideoById({
+                            videoId: song.youtubeId,
+                            startSeconds: seekTime || 0
+                        });
+                    }
+                    if (isPlaying) {
+                        ytPlayer.playVideo();
+                    } else {
+                        ytPlayer.pauseVideo();
+                    }
+                }
+            } else if (song.audioUrl) {
+                if (ytPlayer && ytPlayer.stopVideo) ytPlayer.stopVideo();
+                currentLoadedYtId = null;
+                const nativeAudio = document.getElementById('native-audio-player');
+                if (nativeAudio) {
+                    if (nativeAudio.src !== song.audioUrl) {
+                        nativeAudio.src = song.audioUrl;
+                        if (seekTime) nativeAudio.currentTime = seekTime;
+                    }
+                    if (isPlaying) nativeAudio.play().catch(()=>{});
+                    else nativeAudio.pause();
+                }
+            }
+        }
+
+        function updatePlaybackInfo(song, isPlaying, currentTime) {
+            activeServerSong = song;
+            activeIsPlaying = isPlaying;
+
             if (!song) {
                 document.getElementById('current-song-title').innerText = 'Chưa có bài nào đang phát';
-                document.getElementById('current-song-artist').innerText = 'Hãy thêm bài mới vào danh sách chờ!';
+                document.getElementById('current-song-artist').innerText = 'Hãy dán link YouTube để bắt đầu phát nhạc!';
+                document.getElementById('current-song-requester').innerText = 'Hệ thống';
                 document.getElementById('play-pause-icon').className = 'fa-solid fa-play';
+                if (ytPlayer && ytPlayer.stopVideo) ytPlayer.stopVideo();
+                currentLoadedYtId = null;
                 return;
             }
+
             document.getElementById('current-song-title').innerText = song.title;
-            document.getElementById('current-song-artist').innerText = song.artist || 'Âm nhạc LAN';
-            document.getElementById('current-song-requester').innerText = song.addedBy;
+            document.getElementById('current-song-artist').innerText = song.artist || 'YouTube Video';
+            document.getElementById('current-song-requester').innerText = song.addedBy || 'Thành viên';
             if (song.thumbnail) document.getElementById('current-song-thumb').src = song.thumbnail;
-            currentSongDuration = song.duration || 210;
+            
+            currentSongDuration = song.duration || 240;
             document.getElementById('playback-duration-time').innerText = formatTime(currentSongDuration);
             document.getElementById('play-pause-icon').className = isPlaying ? 'fa-solid fa-pause' : 'fa-solid fa-play';
+
+            syncPlayerWithSong(song, isPlaying, currentTime || 0);
         }
 
         function updatePlaybackProgress(current, duration) {
-            if (!duration) return;
+            if (!duration) duration = currentSongDuration;
             const pct = Math.min(100, (current / duration) * 100);
             document.getElementById('playback-progress-bar').style.width = `${pct}%`;
             document.getElementById('playback-current-time').innerText = formatTime(current);
+
+            // Kiểm tra và đồng bộ thời gian phát trên YouTube nếu lệch > 3.5s
+            if (ytPlayer && ytPlayer.getCurrentTime && activeIsPlaying) {
+                try {
+                    const localTime = ytPlayer.getCurrentTime();
+                    if (Math.abs(localTime - current) > 3.5) {
+                        ytPlayer.seekTo(current, true);
+                    }
+                } catch(e) {}
+            }
+        }
+
+        function forceSyncAudio() {
+            try {
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                if (ytPlayer) {
+                    ytPlayer.unMute();
+                    ytPlayer.setVolume(100);
+                    ytPlayer.playVideo();
+                }
+                const nativeAudio = document.getElementById('native-audio-player');
+                if (nativeAudio && activeServerSong?.audioUrl) {
+                    nativeAudio.play().catch(()=>{});
+                }
+                alert('Đã kích hoạt và đồng bộ âm thanh thành công!');
+            } catch(e) {}
+        }
+
+        function toggleVideoView() {
+            const wrapper = document.getElementById('yt-player-wrapper');
+            const lbl = document.getElementById('video-toggle-lbl');
+            isVideoExpanded = !isVideoExpanded;
+            if (isVideoExpanded) {
+                wrapper.classList.remove('hidden');
+                lbl.innerText = 'Thu gọn';
+            } else {
+                wrapper.classList.add('hidden');
+                lbl.innerText = 'Video';
+            }
+        }
+
+        function handleSeekClick(event) {
+            if (!isCurrentAdmin) return;
+            const rect = event.currentTarget.getBoundingClientRect();
+            const clickX = event.clientX - rect.left;
+            const pct = Math.max(0, Math.min(1, clickX / rect.width));
+            const targetSeconds = Math.round(pct * currentSongDuration);
+            sendControlAction('seek', targetSeconds);
         }
 
         function formatTime(s) {
@@ -2392,16 +2583,47 @@
             return `${min < 10 ? '0' : ''}${min}:${sec < 10 ? '0' : ''}${sec}`;
         }
 
-        function sendControlAction(action) {
-            if (socket) socket.emit('control:action', { action });
+        function sendControlAction(action, time) {
+            if (socket) socket.emit('control:action', { action, time });
+        }
+
+        // Nhận diện bài hát tự động khi gõ / dán link
+        function handleSongInputDebounced() {
+            clearTimeout(songInputDebounceTimer);
+            const input = document.getElementById('song-query-input');
+            const previewEl = document.getElementById('song-input-preview');
+            const val = input.value.trim();
+
+            if (!val) {
+                previewEl.innerText = '';
+                return;
+            }
+
+            previewEl.innerText = '🔍 Đang nhận diện liên kết...';
+            songInputDebounceTimer = setTimeout(async () => {
+                try {
+                    const res = await fetch('/api/song-meta?q=' + encodeURIComponent(val));
+                    const data = await res.json();
+                    if (data.success) {
+                        previewEl.innerHTML = `✨ Đã tìm thấy: <span class="text-white font-bold">${data.title}</span> <span class="text-cyan-300">(${data.artist})</span>`;
+                    } else {
+                        previewEl.innerText = '🎵 Bài hát sẽ được tìm kiếm tự động khi bạn bấm Thêm';
+                    }
+                } catch(e) {
+                    previewEl.innerText = '';
+                }
+            }, 350);
         }
 
         function handleAddSong() {
             const input = document.getElementById('song-query-input');
+            const previewEl = document.getElementById('song-input-preview');
             const val = input.value.trim();
             if (val && socket) {
                 socket.emit('song:add', { query: val });
                 input.value = '';
+                if (previewEl) previewEl.innerText = '✅ Đã gửi yêu cầu thêm bài hát!';
+                setTimeout(() => { if (previewEl) previewEl.innerText = ''; }, 2500);
             }
         }
 
@@ -2413,15 +2635,15 @@
                 const tr = document.createElement('tr');
                 tr.className = 'hover:bg-slate-800/30 transition';
                 tr.innerHTML = `
-                    <td class="py-2 px-3 font-mono text-slate-500">${idx + 1}</td>
-                    <td class="py-2 px-3">
-                        <div class="font-bold text-white truncate max-w-xs">${s.title}</div>
+                    <td class="py-2.5 px-3 font-mono text-slate-500">${idx + 1}</td>
+                    <td class="py-2.5 px-3">
+                        <div class="font-bold text-white truncate max-w-xs sm:max-w-md">${s.title}</div>
                         <div class="text-[10px] text-slate-400">${s.artist || 'YouTube'}</div>
                     </td>
-                    <td class="py-2 px-3 text-slate-300">${s.addedBy}</td>
-                    <td class="py-2 px-3 text-center font-bold text-gold">${s.voteScore || 0}</td>
-                    <td class="py-2 px-3 text-right">
-                        <button onclick="voteSong('${s.id}', 1)" class="px-2 py-1 bg-slate-800 hover:bg-emerald-600 rounded text-xs font-bold text-slate-200 transition">
+                    <td class="py-2.5 px-3 text-slate-300 font-semibold">${s.addedBy}</td>
+                    <td class="py-2.5 px-3 text-center font-bold text-gold">${s.voteScore || 0}</td>
+                    <td class="py-2.5 px-3 text-right">
+                        <button onclick="voteSong('${s.id}', 1)" class="px-2.5 py-1 bg-slate-800 hover:bg-emerald-600 rounded-lg text-xs font-bold text-slate-200 transition">
                             ▲ Vote
                         </button>
                     </td>
