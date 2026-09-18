@@ -17,6 +17,10 @@ const io = new Server(server, {
 const PORT = process.env.PORT || 3000;
 let globalOnlineUrl = process.env.PUBLIC_URL || null;
 
+// Body parser cho webhook và REST API
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
 // Cấu hình phục vụ file tĩnh (ưu tiên public/)
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.static(__dirname));
@@ -122,6 +126,59 @@ app.get('/api/song-meta', async (req, res) => {
 });
 
 // ==========================================
+// REST API CHO TELEGRAM BOT & WEBHOOKS
+// ==========================================
+app.get('/api/bot/random', async (req, res) => {
+    try {
+        const by = req.query.by || 'Bot @HiFiAudiobot';
+        const song = await queueRandomSong(by);
+        if (song) {
+            res.json({ success: true, song });
+        } else {
+            res.status(500).json({ success: false, message: 'Không thể thêm bài ngẫu nhiên lúc này' });
+        }
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+app.post('/api/bot/add-song', async (req, res) => {
+    try {
+        const { query, title, artist, audioUrl, addedBy } = req.body;
+        if (!query && !audioUrl) {
+            return res.status(400).json({ success: false, message: 'Thiếu query hoặc audioUrl' });
+        }
+        const song = await addSongFromSource(query, title, artist, audioUrl, addedBy || 'Bot @HiFiAudiobot');
+        if (song) {
+            res.json({ success: true, song });
+        } else {
+            res.status(404).json({ success: false, message: 'Không tìm thấy bài hát' });
+        }
+    } catch (err) {
+        res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+app.get('/api/bot/status', (req, res) => {
+    res.json({
+        success: true,
+        botConnected: isTelegramPolling,
+        botInfo: telegramBotInfo,
+        currentSong,
+        playlistCount: playlist.length,
+        isPlaying: playback.isPlaying,
+        onlineUrl: globalOnlineUrl
+    });
+});
+
+app.post('/api/bot/set-token', (req, res) => {
+    const { token } = req.body;
+    if (!token) return res.status(400).json({ success: false, message: 'Token không được để trống' });
+    startTelegramBot(token);
+    res.json({ success: true, message: 'Đang kết nối bot Telegram...' });
+});
+
+// ==========================================
 // TRẠNG THÁI PHÒNG NHẠC (MUSIC STATE)
 // ==========================================
 const users = new Map(); // socket.id => { id, username, joinedAt, isAdmin, ip, coins, gamesWon, gamesPlayed }
@@ -223,6 +280,269 @@ function playNextSong() {
 
 if (playlist.length > 0) {
     playSong(playlist.shift());
+}
+
+// ==========================================
+// KHO NHẠC RANDOM & HỖ TRỢ BOT TELEGRAM
+// ==========================================
+const RANDOM_CURATED_TRACKS = [
+    { title: "Nàng Thơ", artist: "Hoàng Dũng", query: "Nàng Thơ Hoàng Dũng" },
+    { title: "Ghé Qua", artist: "Dick x PC x Tofu", query: "Ghé Qua Dick PC Tofu" },
+    { title: "Từng Là", artist: "Vũ Cát Tường", query: "Từng Là Vũ Cát Tường" },
+    { title: "Lạ Lùng", artist: "Vũ.", query: "Lạ Lùng Vũ" },
+    { title: "Một Đêm Say", artist: "Thịnh Suy", query: "Một Đêm Say Thịnh Suy" },
+    { title: "Bình Yên", artist: "Vũ. ft. Binz", query: "Bình Yên Vũ Binz" },
+    { title: "Chuyện Đôi Ta", artist: "Emcee L ft Muộii", query: "Chuyện Đôi Ta Emcee L" },
+    { title: "Ánh Sao Và Bầu Trời", artist: "T.R.I", query: "Ánh Sao Và Bầu Trời T.R.I" },
+    { title: "Until I Found You", artist: "Stephen Sanchez", query: "Until I Found You Stephen Sanchez" },
+    { title: "Golden Hour", artist: "JVKE", query: "Golden Hour JVKE" },
+    { title: "Double Take", artist: "dhruv", query: "Double Take dhruv" },
+    { title: "Death Bed (Coffee for Your Head)", artist: "Powfu", query: "Powfu death bed coffee for your head" },
+    { title: "Snowman", artist: "Sia", query: "Snowman Sia" },
+    { title: "3107 3", artist: "W/n x Nâu x Duongg x Titie", query: "3107 3 W/n Nâu Duongg Titie" },
+    { title: "Đi Về Nhà", artist: "Đen x JustaTee", query: "Đi Về Nhà Đen JustaTee" },
+    { title: "Bài Này Chill Phết", artist: "Đen ft. MIN", query: "Bài Này Chill Phết Đen MIN" },
+    { title: "Attention", artist: "Charlie Puth", query: "Attention Charlie Puth" },
+    { title: "Snooze", artist: "SZA", query: "Snooze SZA" },
+    { title: "Lo-fi Hip Hop Radio - Beats to Relax/Study to", artist: "Lofi Girl", query: "Lofi hip hop radio beats to relax study to" }
+];
+
+async function addSongFromSource(query, title = null, artist = null, audioUrl = null, addedBy = 'Bot @HiFiAudiobot') {
+    let ytId = query ? extractYouTubeId(query) : null;
+    const isAudioUrl = audioUrl || (query && query.match(/\.(mp3|wav|ogg|m4a|flac)(\?.*)?$/i));
+    let newSong = null;
+
+    if (!ytId && !isAudioUrl && query) {
+        ytId = await searchYouTube(query);
+    }
+
+    if (ytId) {
+        const meta = await fetchYouTubeMeta(ytId);
+        newSong = {
+            id: 'song_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+            title: title || meta.title,
+            artist: artist || meta.artist,
+            url: `https://www.youtube.com/watch?v=${ytId}`,
+            youtubeId: ytId,
+            audioUrl: null,
+            thumbnail: meta.thumbnail,
+            duration: 240,
+            addedBy: addedBy,
+            addedById: 'bot',
+            addedAt: Date.now(),
+            votes: {},
+            voteScore: 1
+        };
+    } else if (isAudioUrl || audioUrl) {
+        const directUrl = audioUrl || query;
+        newSong = {
+            id: 'song_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
+            title: title || directUrl.split('/').pop().split('?')[0] || 'Hi-Fi Audio Track',
+            artist: artist || 'HiFi Audio Stream',
+            url: directUrl,
+            youtubeId: null,
+            audioUrl: directUrl,
+            thumbnail: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300&h=300&fit=crop&q=80',
+            duration: 220,
+            addedBy: addedBy,
+            addedById: 'bot',
+            addedAt: Date.now(),
+            votes: {},
+            voteScore: 1
+        };
+    } else {
+        return null;
+    }
+
+    if (!currentSong) {
+        playSong(newSong);
+    } else {
+        playlist.push(newSong);
+        playlist.sort((a, b) => b.voteScore - a.voteScore || a.addedAt - b.addedAt);
+        io.emit('playlist:update', playlist);
+    }
+
+    io.emit('chat:system', {
+        text: `🤖 ${addedBy} đã thêm: "${newSong.title}" (${newSong.artist})`,
+        time: new Date().toLocaleTimeString('vi-VN')
+    });
+
+    return newSong;
+}
+
+async function queueRandomSong(requestedBy = 'Bot @HiFiAudiobot') {
+    const track = RANDOM_CURATED_TRACKS[Math.floor(Math.random() * RANDOM_CURATED_TRACKS.length)];
+    return await addSongFromSource(track.query, track.title, track.artist, null, requestedBy);
+}
+
+// ==========================================
+// TÍCH HỢP TELEGRAM BOT (@HiFiAudiobot)
+// ==========================================
+let telegramBotToken = process.env.TELEGRAM_BOT_TOKEN || null;
+const telegramArgIdx = process.argv.indexOf('--telegram');
+if (telegramArgIdx !== -1 && process.argv[telegramArgIdx + 1]) {
+    telegramBotToken = process.argv[telegramArgIdx + 1];
+}
+let telegramBotInfo = null;
+let isTelegramPolling = false;
+let lastTelegramUpdateId = 0;
+
+async function sendTelegramMessage(chatId, text, replyToMessageId = null) {
+    if (!telegramBotToken) return;
+    try {
+        await fetch(`https://api.telegram.org/bot${telegramBotToken}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                chat_id: chatId,
+                text: text,
+                reply_to_message_id: replyToMessageId,
+                parse_mode: 'HTML'
+            })
+        });
+    } catch(e) {
+        console.warn('Telegram send error:', e.message);
+    }
+}
+
+async function startTelegramBot(token) {
+    if (!token) return;
+    telegramBotToken = token.trim();
+    if (isTelegramPolling) return;
+    isTelegramPolling = true;
+
+    try {
+        const res = await fetch(`https://api.telegram.org/bot${telegramBotToken}/getMe`);
+        const data = await res.json();
+        if (data.ok) {
+            telegramBotInfo = data.result;
+            console.log(`🤖 Telegram Bot đã kết nối thành công: @${telegramBotInfo.username} (${telegramBotInfo.first_name})`);
+            io.emit('telegram:status', { connected: true, botInfo: telegramBotInfo });
+            pollTelegramUpdates();
+        } else {
+            console.warn('❌ Token Telegram không hợp lệ:', data.description);
+            isTelegramPolling = false;
+            io.emit('telegram:status', { connected: false, error: data.description });
+        }
+    } catch(e) {
+        console.warn('❌ Không thể kết nối tới Telegram API:', e.message);
+        isTelegramPolling = false;
+    }
+}
+
+async function pollTelegramUpdates() {
+    if (!isTelegramPolling || !telegramBotToken) return;
+    try {
+        const res = await fetch(`https://api.telegram.org/bot${telegramBotToken}/getUpdates?offset=${lastTelegramUpdateId + 1}&timeout=20`);
+        const data = await res.json();
+        if (data.ok && Array.isArray(data.result)) {
+            for (const update of data.result) {
+                lastTelegramUpdateId = update.update_id;
+                await handleTelegramMessage(update.message || update.channel_post);
+            }
+        }
+    } catch(err) {
+        // Long polling timeout
+    }
+    if (isTelegramPolling) {
+        setTimeout(pollTelegramUpdates, 1000);
+    }
+}
+
+async function handleTelegramMessage(msg) {
+    if (!msg) return;
+    const chatId = msg.chat.id;
+    const sender = msg.from ? (msg.from.first_name || msg.from.username || 'Người dùng Telegram') : 'Telegram';
+    const text = (msg.text || msg.caption || '').trim();
+
+    // 1. Nhận tệp âm thanh (Audio / Voice / Document MP3/FLAC/M4A)
+    if (msg.audio || (msg.document && msg.document.mime_type && msg.document.mime_type.startsWith('audio/'))) {
+        const audioObj = msg.audio || msg.document;
+        const fileId = audioObj.file_id;
+        const songTitle = audioObj.title || audioObj.file_name || 'Bản nhạc Hi-Fi';
+        const songArtist = audioObj.performer || 'Hi-Fi Audio';
+
+        try {
+            const fileRes = await fetch(`https://api.telegram.org/bot${telegramBotToken}/getFile?file_id=${fileId}`);
+            const fileData = await fileRes.json();
+            if (fileData.ok && fileData.result.file_path) {
+                const streamUrl = `https://api.telegram.org/file/bot${telegramBotToken}/${fileData.result.file_path}`;
+                const added = await addSongFromSource(null, songTitle, songArtist, streamUrl, `@${telegramBotInfo?.username || 'HiFiAudiobot'} (${sender})`);
+                if (added) {
+                    await sendTelegramMessage(chatId, `🎧 <b>Đã nhận nhạc Hi-Fi!</b>\n🎵 <b>Bài hát:</b> ${added.title}\n👤 <b>Nghệ sĩ:</b> ${added.artist}\n✅ Đã đưa vào phòng nghe nhạc LAN & Online!`, msg.message_id);
+                }
+            }
+        } catch(err) {
+            await sendTelegramMessage(chatId, `⚠️ Lỗi xử lý file âm thanh: ${err.message}`, msg.message_id);
+        }
+        return;
+    }
+
+    if (!text) return;
+
+    // 2. Lệnh /random hoặc gõ "random"
+    if (text.startsWith('/random') || text.toLowerCase() === 'random') {
+        const randomSong = await queueRandomSong(`@${telegramBotInfo?.username || 'HiFiAudiobot'} (${sender})`);
+        if (randomSong) {
+            await sendTelegramMessage(chatId, `🎲 <b>Đã chọn ngẫu nhiên bài hát:</b>\n🎵 <b>${randomSong.title}</b>\n👤 <b>${randomSong.artist}</b>\n👉 Đang phát / chờ phát trong phòng!`, msg.message_id);
+        }
+        return;
+    }
+
+    // 3. Lệnh /play <tên bài hoặc link>
+    if (text.startsWith('/play ')) {
+        const query = text.substring(6).trim();
+        if (query) {
+            await sendTelegramMessage(chatId, `🔍 Đang tìm kiếm bài hát: "<b>${query}</b>"...`, msg.message_id);
+            const added = await addSongFromSource(query, null, null, null, `@${telegramBotInfo?.username || 'HiFiAudiobot'} (${sender})`);
+            if (added) {
+                await sendTelegramMessage(chatId, `✅ <b>Đã thêm bài hát vào phòng:</b>\n🎵 <b>${added.title}</b> (${added.artist})\n⏱ Thời lượng: ~${Math.round(added.duration)}s`, msg.message_id);
+            } else {
+                await sendTelegramMessage(chatId, `❌ Không tìm thấy bài hát phù hợp!`, msg.message_id);
+            }
+        }
+        return;
+    }
+
+    // 4. Lệnh /skip
+    if (text.startsWith('/skip')) {
+        playNextSong();
+        await sendTelegramMessage(chatId, `⏭️ Đã chuyển sang bài tiếp theo trong phòng!`, msg.message_id);
+        return;
+    }
+
+    // 5. Lệnh /queue hoặc /np (Now Playing)
+    if (text.startsWith('/queue') || text.startsWith('/np')) {
+        let reply = `🎧 <b>Đang phát:</b> ${currentSong ? `${currentSong.title} - ${currentSong.artist}` : 'Chưa có bài nào'}\n`;
+        reply += `📋 <b>Hàng chờ (${playlist.length} bài):</b>\n`;
+        if (playlist.length === 0) {
+            reply += `<i>(Trống - Gõ /random để bot chọn bài ngẫu nhiên!)</i>`;
+        } else {
+            playlist.slice(0, 5).forEach((s, idx) => {
+                reply += `${idx + 1}. ${s.title} (${s.artist})\n`;
+            });
+            if (playlist.length > 5) reply += `... và ${playlist.length - 5} bài khác.`;
+        }
+        await sendTelegramMessage(chatId, reply, msg.message_id);
+        return;
+    }
+
+    // 6. Lệnh /start hoặc /help
+    if (text.startsWith('/start') || text.startsWith('/help')) {
+        const helpText = `🤖 <b>Xin chào ${sender}!</b>\nTôi là Bot kết nối với phòng nhạc <b>LAN Music Office & Game Zone</b>.\n\n` +
+            `👉 <b>Các lệnh điều khiển:</b>\n` +
+            `• <code>/random</code> : Chọn ngẫu nhiên 1 bài hát thư giãn cực hay vào phòng\n` +
+            `• <code>/play [tên bài hát hoặc link YouTube]</code> : Thêm bài hát bất kỳ\n` +
+            `• <code>/skip</code> : Bỏ qua bài hát hiện tại\n` +
+            `• <code>/queue</code> : Xem danh sách bài hát đang chờ\n` +
+            `• <i>Gửi hoặc chuyển tiếp (Forward) bất kỳ file nhạc MP3/FLAC nào từ @HiFiAudiobot vào đây để phát trực tiếp!</i>\n\n` +
+            `🌐 <b>Link phòng nhạc:</b> ${globalOnlineUrl || getPrimaryLanUrl()}`;
+        await sendTelegramMessage(chatId, helpText, msg.message_id);
+    }
+}
+
+if (telegramBotToken) {
+    startTelegramBot(telegramBotToken);
 }
 
 function electNewAdmin(reason = '') {

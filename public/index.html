@@ -420,6 +420,9 @@
                             <button onclick="handleAddSong()" class="bg-primary hover:bg-primaryHover text-slate-950 font-bold px-3.5 py-2 rounded-xl text-xs sm:text-sm transition flex items-center gap-1 shadow-md">
                                 <i class="fa-solid fa-plus"></i> Thêm
                             </button>
+                            <button onclick="triggerRandomSongNow()" class="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold px-3 py-2 rounded-xl text-xs sm:text-sm transition flex items-center gap-1.5 shadow-md shadow-purple-900/30" title="Bot tự động chọn 1 bài ngẫu nhiên vào phòng">
+                                <i class="fa-solid fa-dice"></i> <span class="hidden sm:inline">Random</span>
+                            </button>
                         </div>
                         <!-- Real-time Recognition Preview -->
                         <div id="song-input-preview" class="text-xs text-cyan-400 font-semibold mt-1.5 min-h-[18px]"></div>
@@ -1173,6 +1176,28 @@
                 <div class="flex gap-2">
                     <select id="admin-kick-select" class="bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-1 text-white text-xs"></select>
                     <button onclick="executeAdminKick()" class="bg-red-600 hover:bg-red-500 text-white font-bold px-3 py-1 rounded-xl">Kick</button>
+                </div>
+            </div>
+
+            <!-- Section 4: KẾT NỐI TELEGRAM BOT (@HiFiAudiobot) & RANDOM NHẠC -->
+            <div class="bg-slate-950 p-4 rounded-2xl border border-sky-500/30 space-y-2.5">
+                <div class="font-bold text-xs sm:text-sm text-sky-400 flex items-center justify-between">
+                    <span class="flex items-center gap-1.5"><i class="fa-brands fa-telegram text-base"></i> KẾT NỐI BOT TELEGRAM</span>
+                    <span id="telegram-bot-status-badge" class="text-[10px] bg-slate-800 text-slate-400 px-2 py-0.5 rounded-full font-bold">Chưa kết nối</span>
+                </div>
+                <div class="text-[11px] text-slate-400 leading-relaxed">
+                    Dán <b>Bot Token</b> từ @BotFather để bot tự động nhận lệnh <code>/random</code>, <code>/play</code> và file nhạc MP3/FLAC từ Telegram:
+                </div>
+                <div class="flex gap-2">
+                    <input type="password" id="telegram-token-input" placeholder="Ví dụ: 123456789:ABCdefGHI..." class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-sky-300 font-mono">
+                    <button onclick="saveTelegramBotToken()" class="px-3 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs transition">
+                        Kết Nối
+                    </button>
+                </div>
+                <div class="flex items-center gap-2 pt-1">
+                    <button onclick="triggerRandomSongNow()" class="flex-1 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs transition shadow flex items-center justify-center gap-1.5">
+                        🎲 Phát ngẫu nhiên 1 bài ngay lập tức
+                    </button>
                 </div>
             </div>
         </div>
@@ -1958,6 +1983,19 @@
                 if (data && data.onlineUrl) {
                     currentOnlineUrl = data.onlineUrl;
                     updateShareLinkUI();
+                }
+            });
+
+            socket.on('telegram:status', (data) => {
+                const badge = document.getElementById('telegram-bot-status-badge');
+                if (badge) {
+                    if (data.connected && data.botInfo) {
+                        badge.className = "text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-bold";
+                        badge.innerText = `Đã kết nối: @${data.botInfo.username}`;
+                    } else {
+                        badge.className = "text-[10px] bg-red-500/20 text-red-400 border border-red-500/30 px-2 py-0.5 rounded-full font-bold";
+                        badge.innerText = `Lỗi: ${data.error || 'Thất bại'}`;
+                    }
                 }
             });
 
@@ -3010,6 +3048,42 @@
                 input.value = '';
                 if (previewEl) previewEl.innerText = '✅ Đã gửi yêu cầu thêm bài hát!';
                 setTimeout(() => { if (previewEl) previewEl.innerText = ''; }, 2500);
+            }
+        }
+
+        async function triggerRandomSongNow() {
+            try {
+                const res = await fetch('/api/bot/random?by=' + encodeURIComponent(myName || 'Người dùng'));
+                const data = await res.json();
+                if (data.success && data.song) {
+                    const previewEl = document.getElementById('song-input-preview');
+                    if (previewEl) {
+                        previewEl.innerHTML = `🎲 Đã chọn ngẫu nhiên: <span class="text-white font-bold">${data.song.title}</span> (${data.song.artist})`;
+                        setTimeout(() => { if (previewEl) previewEl.innerText = ''; }, 3500);
+                    }
+                }
+            } catch(e) {
+                console.warn('Random song error:', e);
+            }
+        }
+
+        async function saveTelegramBotToken() {
+            const input = document.getElementById('telegram-token-input');
+            const token = input.value.trim();
+            if (!token) {
+                alert('Vui lòng nhập Bot Token của bạn từ @BotFather!');
+                return;
+            }
+            try {
+                const res = await fetch('/api/bot/set-token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token })
+                });
+                const data = await res.json();
+                alert(data.message || 'Đang kết nối bot Telegram...');
+            } catch(e) {
+                alert('Lỗi kết nối bot: ' + e.message);
             }
         }
 
