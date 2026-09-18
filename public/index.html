@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🎧 LAN Music Office - Pro Realtime</title>
+    <title>🎧 Vibe Music & Game Zone - Pro LAN</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -32,6 +32,22 @@
         @keyframes bounce { 0%, 100% { transform: scaleY(0.3); } 50% { transform: scaleY(1); } }
         .glow-card:hover { box-shadow: 0 4px 25px -5px rgba(34, 211, 238, 0.12); border-color: rgba(34, 211, 238, 0.3); }
         .admin-glow { box-shadow: 0 0 15px rgba(245, 158, 11, 0.35); }
+        
+        /* Caro Grid */
+        .caro-cell { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 15px; cursor: pointer; user-select: none; border: 1px solid #334155; transition: background-color 0.15s; }
+        .caro-cell:hover { background-color: rgba(34, 211, 238, 0.15); }
+        .caro-cell.winning { background-color: rgba(234, 179, 8, 0.4) !important; animation: pulse 1s infinite; }
+
+        /* Shaking Animation Bát Đĩa */
+        @keyframes bowlShake {
+            0% { transform: translate(0, 0) rotate(0deg); }
+            20% { transform: translate(-8px, -5px) rotate(-6deg); }
+            40% { transform: translate(8px, 4px) rotate(6deg); }
+            60% { transform: translate(-6px, 3px) rotate(-4deg); }
+            80% { transform: translate(6px, -3px) rotate(4deg); }
+            100% { transform: translate(0, 0) rotate(0deg); }
+        }
+        .shaking { animation: bowlShake 0.6s infinite ease-in-out; }
     </style>
 </head>
 <body class="bg-slate-950 text-slate-100 flex flex-col select-none">
@@ -40,8 +56,8 @@
     <div id="login-modal" class="fixed inset-0 bg-slate-950/95 backdrop-blur-md z-50 flex items-center justify-center p-4">
         <div class="bg-slate-900 border border-slate-800 p-8 rounded-3xl shadow-2xl w-full max-w-md text-center relative">
             <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 mb-5 text-4xl shadow-inner">🎵</div>
-            <h2 class="text-3xl font-extrabold mb-2 text-cyan-400 tracking-tight">Văn Phòng Vui Vẻ</h2>
-            <p class="text-slate-400 mb-6 px-2 text-sm leading-relaxed">Nhập tên để tham gia phòng nghe nhạc đồng bộ mạng LAN</p>
+            <h2 class="text-3xl font-extrabold mb-2 text-cyan-400 tracking-tight">Vibe Music & Game</h2>
+            <p class="text-slate-400 mb-6 px-2 text-sm leading-relaxed">Nhập tên để tham gia nghe nhạc và chơi mini game cùng đồng nghiệp</p>
             
             <form onsubmit="event.preventDefault(); joinRoom();">
                 <input type="text" id="username-input" autofocus placeholder="Biệt danh của bạn (VD: Văn Trường, Lan Anh...)" 
@@ -64,7 +80,6 @@
     <!-- MODAL QUÉT MÃ QR & SAO CHÉP LINK VÀO PHÒNG -->
     <div id="share-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
         <div class="bg-slate-900 border border-slate-800 p-6 sm:p-8 rounded-3xl shadow-2xl w-full max-w-md flex flex-col items-center relative animate-scaleUp">
-            <!-- Nút đóng modal -->
             <button onclick="closeShareModal()" class="absolute top-5 right-5 w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400 hover:text-white transition cursor-pointer text-sm font-bold">✕</button>
             
             <div class="flex items-center gap-2 mb-2">
@@ -73,19 +88,16 @@
             </div>
             <p class="text-xs text-slate-400 text-center mb-5">Đồng nghiệp chỉ cần kết nối cùng Wi-Fi văn phòng và quét mã QR hoặc mở link dưới đây:</p>
 
-            <!-- Khung Mã QR (Trắng để camera điện thoại nhận diện siêu nhạy) -->
             <div class="p-3 bg-white rounded-2xl shadow-xl flex items-center justify-center mb-5 border border-slate-200" id="qr-container">
                 <img id="qr-img" src="/api/qr" alt="QR Code Vào Phòng" class="w-56 h-56 object-contain rounded-lg">
             </div>
 
-            <!-- Lựa chọn Network IP nếu máy Admin có nhiều card mạng (Ethernet/WiFi) -->
             <div id="lan-selector-container" class="w-full mb-3 hidden">
                 <label class="text-[11px] text-slate-400 font-medium mb-1 block">Chọn mạng LAN phù hợp:</label>
                 <select id="lan-select" onchange="onLanChange(this.value)" class="w-full bg-slate-800 border border-slate-700 text-white rounded-xl px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-cyan-500">
                 </select>
             </div>
 
-            <!-- Khung hiển thị Link & Nút Copy -->
             <div class="w-full space-y-2.5">
                 <div class="flex items-center gap-2 bg-slate-800/90 border border-slate-700 rounded-2xl p-2 pl-3">
                     <input type="text" id="share-link-input" readonly value="" class="bg-transparent flex-1 text-xs text-cyan-300 font-mono outline-none select-all truncate">
@@ -104,7 +116,18 @@
         <div class="flex items-center space-x-3 sm:space-x-4">
             <div class="flex items-center space-x-2.5 cursor-pointer">
                 <div class="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-lg">🎧</div>
-                <span class="text-xl font-bold text-white tracking-tight">LAN Music <span class="font-light text-slate-400">Office</span></span>
+                <span class="text-xl font-bold text-white tracking-tight">Vibe <span class="font-light text-cyan-400">Music</span></span>
+            </div>
+
+            <!-- CHUYỂN TAB: PHÒNG NHẠC VS KHU MINI GAME -->
+            <div class="flex items-center bg-slate-800/80 p-1 rounded-2xl border border-slate-700/80">
+                <button id="tab-music-btn" onclick="switchTab('music')" class="flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-cyan-500 text-slate-950 shadow-md">
+                    <span>🎧</span> <span>Phòng Nhạc</span>
+                </button>
+                <button id="tab-game-btn" onclick="switchTab('game')" class="flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition text-slate-400 hover:text-white">
+                    <span>🎮</span> <span>Mini Game</span>
+                    <span class="bg-rose-500 text-white text-[9px] px-1.5 py-0.5 rounded-full font-extrabold uppercase animate-pulse">HOT</span>
+                </button>
             </div>
 
             <!-- Nút Quét QR & Chia sẻ Link -->
@@ -113,13 +136,13 @@
                 <span>📱</span> <span class="hidden sm:inline">Mã QR & Link</span>
             </button>
 
-            <!-- Hiển thị Ping LAN thực tế -->
-            <div class="flex items-center gap-2 bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700 text-xs shadow-sm" title="Độ trễ truyền nhận gói tin Socket.io trong mạng LAN">
+            <!-- Ping LAN -->
+            <div class="flex items-center gap-2 bg-slate-800/80 px-3 py-1.5 rounded-xl border border-slate-700 text-xs shadow-sm">
                 <span id="ping-dot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                 <span class="text-slate-300">Ping: <b id="ping-val" class="text-emerald-400 font-mono">-- ms</b></span>
             </div>
 
-            <!-- Trạng thái Admin linh hoạt -->
+            <!-- Trạng thái Admin -->
             <div id="admin-badge-container">
                 <span id="admin-badge" class="text-xs bg-amber-500/10 text-amber-400 px-3 py-1.5 rounded-full border border-amber-500/30 font-medium inline-flex items-center gap-1.5 transition-all">
                     <span>👑</span> <span id="admin-badge-text">Admin: Đang kết nối...</span>
@@ -128,117 +151,331 @@
         </div>
 
         <div class="flex items-center space-x-3 sm:space-x-4">
+            <!-- Xu cá nhân cho Mini Game -->
+            <div class="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 px-3 py-1.5 rounded-xl text-xs font-bold text-amber-300" title="Xu dùng để chơi mini game (Lưu tự động)">
+                <span>💰</span>
+                <span id="my-coins-display">1,000</span>
+                <span class="text-[10px] text-amber-400 font-normal">Xu</span>
+                <button onclick="claimFreeCoins()" title="Nhận 500 xu miễn phí" class="ml-1 text-amber-400 hover:text-amber-200 text-sm">➕</button>
+            </div>
+
             <span class="text-sm text-slate-300 flex items-center gap-2 bg-slate-800/50 px-3 py-1.5 rounded-xl border border-slate-700/60">
                 <span>🎙️</span>
                 <span id="my-role-tag" class="hidden text-[10px] font-bold uppercase bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/40">ADMIN</span>
                 <b id="display-name" class="text-white">Khách</b>
             </span>
+
             <button onclick="toggleMute()" id="mute-btn" class="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 px-4 py-2 rounded-xl text-xs border border-slate-700 transition font-medium cursor-pointer shadow-sm">
                 <span id="mute-icon">🔊</span> <span id="mute-text">Tắt tiếng cá nhân</span>
             </button>
         </div>
     </header>
 
-    <!-- NỘI DUNG CHÍNH -->
-    <main class="flex-1 grid grid-cols-12 gap-5 p-5 overflow-hidden">
-        
-        <!-- CỘT TRÁI: PLAYER & CHAT -->
-        <div class="col-span-7 flex flex-col gap-5 overflow-hidden">
-            <!-- AUDIO PLAYER -->
-            <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 glow-card shadow-xl flex flex-col justify-between relative overflow-hidden">
-                <div class="flex items-center gap-5 mb-5">
-                    <div class="relative w-24 h-24 rounded-2xl overflow-hidden border border-slate-700 flex-shrink-0 shadow-lg group bg-slate-800">
-                        <img id="current-song-thumb" src="https://i.ytimg.com/vi/jfKfPfyJRdk/hqdefault.jpg" alt="Art" class="w-full h-full object-cover transition duration-300 group-hover:scale-105">
-                        <div class="absolute inset-0 bg-gradient-to-t from-slate-950/60 to-transparent"></div>
-                    </div>
-                    <div class="flex-1 min-w-0">
-                        <div class="flex items-center gap-2 mb-1.5">
-                            <div id="equalizer-icon" class="equalizer"><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>
-                            <span class="text-xs font-bold text-cyan-400 uppercase tracking-wider">Đang phát Live (Time-Sync)</span>
+    <!-- NỘI DUNG CHÍNH (CONTAINER) -->
+    <main class="flex-1 p-5 overflow-hidden relative">
+
+        <!-- ======================================================= -->
+        <!-- TAB 1: PHÒNG NHẠC (MUSIC VIEW) -->
+        <!-- ======================================================= -->
+        <div id="music-view" class="h-full grid grid-cols-12 gap-5 overflow-hidden transition-all duration-300">
+            <!-- CỘT TRÁI: PLAYER & CHAT -->
+            <div class="col-span-7 flex flex-col gap-5 overflow-hidden">
+                <!-- AUDIO PLAYER -->
+                <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 glow-card shadow-xl flex flex-col justify-between relative overflow-hidden">
+                    <div class="flex items-center gap-5 mb-5">
+                        <div class="relative w-24 h-24 rounded-2xl overflow-hidden border border-slate-700 flex-shrink-0 shadow-lg group bg-slate-800">
+                            <img id="current-song-thumb" src="https://i.ytimg.com/vi/jfKfPfyJRdk/hqdefault.jpg" alt="Art" class="w-full h-full object-cover transition duration-300 group-hover:scale-105">
+                            <div class="absolute inset-0 bg-gradient-to-t from-slate-950/60 to-transparent"></div>
                         </div>
-                        <h3 id="current-song-title" class="font-bold text-xl text-white truncate tracking-tight" title="Đang chờ bài hát...">Chưa có bài hát</h3>
-                        <p id="current-song-user" class="text-sm text-slate-400 truncate">Hãy thêm bài hát vào hàng chờ...</p>
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2 mb-1.5">
+                                <div id="equalizer-icon" class="equalizer"><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>
+                                <span class="text-xs font-bold text-cyan-400 uppercase tracking-wider">Đang phát Live (Time-Sync)</span>
+                            </div>
+                            <h3 id="current-song-title" class="font-bold text-xl text-white truncate tracking-tight" title="Đang chờ bài hát...">Chưa có bài hát</h3>
+                            <p id="current-song-user" class="text-sm text-slate-400 truncate">Hãy thêm bài hát vào hàng chờ...</p>
+                        </div>
+                    </div>
+
+                    <!-- Progress Bar -->
+                    <div class="space-y-1.5 mb-5">
+                        <div id="progress-container" class="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden cursor-pointer relative group">
+                            <div id="progress-bar" class="bg-gradient-to-r from-cyan-500 to-cyan-300 h-full w-0 transition-all duration-150 rounded-full"></div>
+                        </div>
+                        <div class="flex justify-between text-xs text-slate-400 font-mono font-medium px-0.5">
+                            <span id="current-time">00:00</span>
+                            <span id="duration-time">00:00</span>
+                        </div>
+                    </div>
+
+                    <!-- Controls -->
+                    <div class="flex items-center justify-between pt-2 border-t border-slate-800/80">
+                        <div class="text-xs font-medium flex items-center gap-1.5 text-slate-400" id="control-status">
+                            <span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
+                            <span id="control-hint">Trạng thái: Đồng bộ LAN</span>
+                        </div>
+                        <div class="flex items-center gap-4">
+                            <button onclick="sendControl('prev')" id="prev-btn" title="Phát lại từ đầu (Chỉ Admin)" class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 flex items-center justify-center text-white transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer">⏮</button>
+                            <button onclick="sendControl('toggle')" id="play-btn" title="Tạm dừng / Tiếp tục (Chỉ Admin)" class="w-12 h-12 rounded-2xl bg-cyan-400 hover:bg-cyan-300 active:scale-95 text-slate-950 font-bold flex items-center justify-center transition text-lg shadow-lg shadow-cyan-500/20 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">⏸</button>
+                            <button onclick="sendControl('next')" id="next-btn" title="Chuyển bài tiếp theo (Chỉ Admin)" class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 flex items-center justify-center text-white transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer">⏭</button>
+                        </div>
+                        <div class="flex items-center gap-2" title="Âm lượng trình phát riêng của bạn">
+                            <span class="text-slate-400 text-sm">🔊</span>
+                            <input id="volume-slider" oninput="changeVolume(this.value)" type="range" min="0" max="100" value="80" class="w-20 accent-cyan-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg">
+                        </div>
                     </div>
                 </div>
 
-                <!-- Progress Bar tương tác -->
-                <div class="space-y-1.5 mb-5">
-                    <div id="progress-container" class="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden cursor-pointer relative group">
-                        <div id="progress-bar" class="bg-gradient-to-r from-cyan-500 to-cyan-300 h-full w-0 transition-all duration-150 rounded-full"></div>
+                <!-- CHAT NHÓM -->
+                <div class="flex-1 bg-slate-900 border border-slate-800 rounded-3xl p-5 flex flex-col shadow-xl overflow-hidden glow-card">
+                    <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-3">
+                        <h4 class="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                            <span class="p-1.5 rounded-lg bg-slate-800 text-cyan-400">💬</span> Phòng thảo luận LAN
+                        </h4>
+                        <span class="text-xs bg-slate-800 px-2.5 py-1 rounded-full border border-slate-700 text-cyan-400 font-medium" id="online-count">0 người online</span>
                     </div>
-                    <div class="flex justify-between text-xs text-slate-400 font-mono font-medium px-0.5">
-                        <span id="current-time">00:00</span>
-                        <span id="duration-time">00:00</span>
+                    
+                    <div class="flex-1 overflow-y-auto space-y-2.5 pr-2 text-sm text-slate-300 mb-3" id="chat-box">
+                        <div class="text-center text-xs text-slate-500 py-3 italic">Chào mừng bạn đến với Vibe Music & Game! Hãy cùng nghe nhạc và chơi game...</div>
                     </div>
-                </div>
 
-                <!-- Controls (Admin có toàn quyền, Client thường chỉ xem) -->
-                <div class="flex items-center justify-between pt-2 border-t border-slate-800/80">
-                    <div class="text-xs font-medium flex items-center gap-1.5 text-slate-400" id="control-status">
-                        <span class="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
-                        <span id="control-hint">Trạng thái: Đồng bộ LAN</span>
-                    </div>
-                    <div class="flex items-center gap-4">
-                        <button onclick="sendControl('prev')" id="prev-btn" title="Phát lại từ đầu (Chỉ Admin)" class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 flex items-center justify-center text-white transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer">⏮</button>
-                        <button onclick="sendControl('toggle')" id="play-btn" title="Tạm dừng / Tiếp tục (Chỉ Admin)" class="w-12 h-12 rounded-2xl bg-cyan-400 hover:bg-cyan-300 active:scale-95 text-slate-950 font-bold flex items-center justify-center transition text-lg shadow-lg shadow-cyan-500/20 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer">⏸</button>
-                        <button onclick="sendControl('next')" id="next-btn" title="Chuyển bài tiếp theo (Chỉ Admin)" class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 flex items-center justify-center text-white transition disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer">⏭</button>
-                    </div>
-                    <div class="flex items-center gap-2" title="Âm lượng trình phát riêng của bạn">
-                        <span class="text-slate-400 text-sm">🔊</span>
-                        <input id="volume-slider" oninput="changeVolume(this.value)" type="range" min="0" max="100" value="80" class="w-20 accent-cyan-400 cursor-pointer h-1.5 bg-slate-800 rounded-lg">
-                    </div>
+                    <form onsubmit="event.preventDefault(); sendChatMessage();" class="flex gap-3 pt-3 border-t border-slate-800">
+                        <input type="text" id="chat-input" placeholder="Nhập tin nhắn tán gẫu..." autocomplete="off" class="flex-1 bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-white focus:ring-2 focus:ring-cyan-500 outline-none text-sm transition">
+                        <button type="submit" class="bg-cyan-400 hover:bg-cyan-300 active:scale-95 text-slate-950 px-5 py-3 rounded-2xl font-bold text-sm transition shadow-md shadow-cyan-500/20 cursor-pointer">Gửi</button>
+                    </form>
                 </div>
             </div>
 
-            <!-- CHAT NHÓM -->
-            <div class="flex-1 bg-slate-900 border border-slate-800 rounded-3xl p-5 flex flex-col shadow-xl overflow-hidden glow-card">
-                <div class="flex items-center justify-between mb-3 border-b border-slate-800 pb-3">
-                    <h4 class="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                        <span class="p-1.5 rounded-lg bg-slate-800 text-cyan-400">💬</span> Phòng thảo luận LAN
+            <!-- CỘT PHẢI: HÀNG CHỜ VOTE -->
+            <div class="col-span-5 bg-slate-900 border border-slate-800 rounded-3xl p-5 flex flex-col shadow-xl overflow-hidden glow-card">
+                <!-- Thêm bài hát -->
+                <div class="mb-5 border-b border-slate-800 pb-5">
+                    <h4 class="text-sm font-bold text-white uppercase tracking-wider mb-3 flex items-center gap-2">
+                        <span class="p-1.5 rounded-lg bg-slate-800 text-cyan-400">➕</span> Thêm bài hát vào hàng chờ
                     </h4>
-                    <span class="text-xs bg-slate-800 px-2.5 py-1 rounded-full border border-slate-700 text-cyan-400 font-medium" id="online-count">0 người online</span>
-                </div>
-                
-                <div class="flex-1 overflow-y-auto space-y-2.5 pr-2 text-sm text-slate-300 mb-3" id="chat-box">
-                    <div class="text-center text-xs text-slate-500 py-3 italic">Chào mừng bạn đến với LAN Music Office! Hãy trò chuyện cùng đồng nghiệp...</div>
+                    <form onsubmit="event.preventDefault(); addSong();" class="flex gap-2.5">
+                        <input type="text" id="song-input" placeholder="Dán link YouTube hoặc tên bài hát..." autocomplete="off"
+                            class="flex-1 bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3.5 text-white placeholder-slate-500 focus:ring-2 focus:ring-cyan-500 outline-none text-sm transition">
+                        <button type="submit" class="bg-cyan-400 hover:bg-cyan-300 active:scale-95 text-slate-950 px-5 py-3.5 rounded-2xl font-bold text-sm transition shadow-lg shadow-cyan-500/20 flex-shrink-0 cursor-pointer">Thêm</button>
+                    </form>
+                    <p class="text-[11px] text-slate-500 mt-2">Hỗ trợ: Link YouTube hoặc tên bài hát.</p>
                 </div>
 
-                <form onsubmit="event.preventDefault(); sendChatMessage();" class="flex gap-3 pt-3 border-t border-slate-800">
-                    <input type="text" id="chat-input" placeholder="Nhập tin nhắn tán gẫu..." autocomplete="off" class="flex-1 bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-white focus:ring-2 focus:ring-cyan-500 outline-none text-sm transition">
-                    <button type="submit" class="bg-cyan-400 hover:bg-cyan-300 active:scale-95 text-slate-950 px-5 py-3 rounded-2xl font-bold text-sm transition shadow-md shadow-cyan-500/20 cursor-pointer">Gửi</button>
-                </form>
+                <!-- Playlist sắp xếp theo Vote -->
+                <div class="flex-1 flex flex-col overflow-hidden">
+                    <div class="flex items-center justify-between mb-3">
+                        <h4 class="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                            <span class="p-1.5 rounded-lg bg-slate-800 text-cyan-400">📜</span> Hàng chờ (Sắp xếp theo Vote)
+                        </h4>
+                        <span id="queue-count" class="text-xs text-slate-400 font-medium">0 bài</span>
+                    </div>
+                    
+                    <div class="flex-1 overflow-y-auto space-y-2.5 pr-1" id="playlist-container">
+                        <p class="text-xs text-slate-500 text-center py-10">Hàng chờ đang trống...</p>
+                    </div>
+                </div>
             </div>
         </div>
 
-        <!-- CỘT PHẢI: HÀNG CHỜ VOTE -->
-        <div class="col-span-5 bg-slate-900 border border-slate-800 rounded-3xl p-5 flex flex-col shadow-xl overflow-hidden glow-card">
-            <!-- Form Thêm bài hát -->
-            <div class="mb-5 border-b border-slate-800 pb-5">
-                <h4 class="text-sm font-bold text-white uppercase tracking-wider mb-3 flex items-center gap-2">
-                    <span class="p-1.5 rounded-lg bg-slate-800 text-cyan-400">➕</span> Thêm bài hát vào hàng chờ
-                </h4>
-                <form onsubmit="event.preventDefault(); addSong();" class="flex gap-2.5">
-                    <input type="text" id="song-input" placeholder="Dán link YouTube hoặc tên bài hát..." autocomplete="off"
-                        class="flex-1 bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3.5 text-white placeholder-slate-500 focus:ring-2 focus:ring-cyan-500 outline-none text-sm transition">
-                    <button type="submit" class="bg-cyan-400 hover:bg-cyan-300 active:scale-95 text-slate-950 px-5 py-3.5 rounded-2xl font-bold text-sm transition shadow-lg shadow-cyan-500/20 flex-shrink-0 cursor-pointer">Thêm</button>
-                </form>
-                <p class="text-[11px] text-slate-500 mt-2">Hỗ trợ: Link YouTube (Watch/Shorts/youtu.be) hoặc gõ tên bài hát.</p>
+        <!-- ======================================================= -->
+        <!-- TAB 2: KHU CHƠI GAME (GAME ZONE VIEW) -->
+        <!-- ======================================================= -->
+        <div id="game-view" class="h-full hidden flex-col gap-4 overflow-hidden">
+            <!-- Thanh chọn Mini Game -->
+            <div class="flex items-center justify-between bg-slate-900 border border-slate-800 px-5 py-3 rounded-2xl shadow-lg">
+                <div class="flex items-center gap-3">
+                    <span class="text-sm font-bold text-slate-400 uppercase tracking-wider">Chọn Trò Chơi:</span>
+                    <div class="flex items-center gap-2">
+                        <button onclick="selectMiniGame('baucua')" id="subtab-baucua-btn" class="px-4 py-2 rounded-xl text-xs font-bold transition bg-cyan-500 text-slate-950 shadow-md">
+                            🎲 Bầu Cua Tôm Cá
+                        </button>
+                        <button onclick="selectMiniGame('caro')" id="subtab-caro-btn" class="px-4 py-2 rounded-xl text-xs font-bold transition bg-slate-800 hover:bg-slate-700 text-slate-300">
+                            🎯 Cờ Caro LAN (5 Quân)
+                        </button>
+                        <button onclick="selectMiniGame('wheel')" id="subtab-wheel-btn" class="px-4 py-2 rounded-xl text-xs font-bold transition bg-slate-800 hover:bg-slate-700 text-slate-300">
+                            🎡 Vòng Quay May Mắn
+                        </button>
+                    </div>
+                </div>
+                <div class="text-xs text-slate-400 italic">
+                    🎵 Âm nhạc vẫn đang phát live dưới nền trong lúc bạn chơi game!
+                </div>
             </div>
 
-            <!-- Danh sách Playlist sắp xếp theo Vote -->
-            <div class="flex-1 flex flex-col overflow-hidden">
-                <div class="flex items-center justify-between mb-3">
-                    <h4 class="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                        <span class="p-1.5 rounded-lg bg-slate-800 text-cyan-400">📜</span> Hàng chờ (Sắp xếp theo Vote)
-                    </h4>
-                    <span id="queue-count" class="text-xs text-slate-400 font-medium">0 bài</span>
-                </div>
+            <!-- KHUNG TRÒ CHƠI NỘI DUNG -->
+            <div class="flex-1 bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl overflow-hidden relative glow-card flex flex-col">
                 
-                <div class="flex-1 overflow-y-auto space-y-2.5 pr-1" id="playlist-container">
-                    <p class="text-xs text-slate-500 text-center py-10">Hàng chờ đang trống...</p>
+                <!-- GAME 1: BẦU CUA TÔM CÁ (DEALER VY VY & BÁT ĐĨA SỨ) -->
+                <div id="game-baucua" class="h-full flex flex-col justify-between overflow-y-auto">
+                    <div class="grid grid-cols-12 gap-5 items-center">
+                        <!-- Dealer Vy Vy Avatar & Bát Đĩa -->
+                        <div class="col-span-4 flex flex-col items-center justify-center p-4 bg-slate-950/60 rounded-3xl border border-slate-800 text-center">
+                            <div class="relative w-32 h-32 rounded-2xl overflow-hidden border-2 border-cyan-500/40 shadow-xl mb-2">
+                                <img src="/dealer_girl.png" alt="Dealer Vy Vy" class="w-full h-full object-cover">
+                                <div class="absolute bottom-0 inset-x-0 bg-slate-950/80 text-[11px] text-cyan-300 py-0.5 font-bold">Dealer Vy Vy</div>
+                            </div>
+                            <p class="text-xs text-slate-400 italic mb-3">"Chúc các anh chị văn phòng rinh thật nhiều xu may mắn nha! 💖"</p>
+
+                            <!-- Bát & Đĩa Sứ -->
+                            <div class="relative w-40 h-40 flex items-center justify-center">
+                                <img src="/porcelain_plate.png" alt="Đĩa Sứ" class="absolute w-36 h-36 object-contain">
+                                <!-- 3 mặt xúc xắc nằm trong đĩa -->
+                                <div id="baucua-dice-display" class="relative z-10 flex gap-1.5">
+                                    <span class="text-2xl p-1 bg-white/90 rounded-lg shadow">🎃</span>
+                                    <span class="text-2xl p-1 bg-white/90 rounded-lg shadow">🦀</span>
+                                    <span class="text-2xl p-1 bg-white/90 rounded-lg shadow">🦐</span>
+                                </div>
+                                <!-- Bát Sứ úp đè lên khi lắc -->
+                                <img id="baucua-bowl-img" src="/porcelain_bowl.png" alt="Bát Sứ" 
+                                    class="absolute w-32 h-32 object-contain z-20 transition-all duration-500 cursor-pointer drop-shadow-2xl">
+                            </div>
+
+                            <div class="flex gap-2 mt-3">
+                                <button onclick="shakeBauCua()" id="baucua-shake-btn" class="bg-gradient-to-r from-cyan-500 to-emerald-400 text-slate-950 font-bold px-6 py-2.5 rounded-xl text-xs hover:opacity-95 active:scale-95 transition shadow-lg shadow-cyan-500/20">
+                                    🎲 Lắc Bát Ngay
+                                </button>
+                                <button onclick="openBauCuaBowl()" id="baucua-open-btn" class="hidden bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-5 py-2.5 rounded-xl text-xs active:scale-95 transition">
+                                    ✨ Mở Bát
+                                </button>
+                            </div>
+                            <div class="text-[11px] text-slate-500 mt-1" id="baucua-status">Hãy đặt cược rồi bấm Lắc Bát!</div>
+                        </div>
+
+                        <!-- 6 Ô Cược Bầu Cua Tôm Cá -->
+                        <div class="col-span-8 flex flex-col gap-3">
+                            <div class="flex items-center justify-between mb-1">
+                                <span class="text-xs font-bold text-white uppercase tracking-wider">Chọn ô để đặt cược (Tỷ lệ 1 ăn 1, ăn 2, ăn 3):</span>
+                                <!-- Chọn mức cược -->
+                                <div class="flex items-center gap-1.5 bg-slate-800 p-1 rounded-xl text-xs">
+                                    <span class="text-slate-400 text-[11px] pl-2">Mức cược:</span>
+                                    <button onclick="setBetAmount(10)" class="bet-chip-btn active px-2.5 py-1 rounded-lg font-bold text-xs bg-cyan-500 text-slate-950">10</button>
+                                    <button onclick="setBetAmount(50)" class="bet-chip-btn px-2.5 py-1 rounded-lg font-bold text-xs bg-slate-700 text-slate-300">50</button>
+                                    <button onclick="setBetAmount(100)" class="bet-chip-btn px-2.5 py-1 rounded-lg font-bold text-xs bg-slate-700 text-slate-300">100</button>
+                                    <button onclick="setBetAmount(500)" class="bet-chip-btn px-2.5 py-1 rounded-lg font-bold text-xs bg-slate-700 text-slate-300">500</button>
+                                    <button onclick="clearAllBets()" class="px-2.5 py-1 rounded-lg font-medium text-xs bg-rose-500/20 text-rose-300 hover:bg-rose-500/30">Hủy cược</button>
+                                </div>
+                            </div>
+
+                            <!-- Lưới 6 ô linh vật -->
+                            <div class="grid grid-cols-3 gap-3">
+                                <!-- Nai -->
+                                <div onclick="placeBet('nai')" class="baucua-bet-box bg-slate-950/80 hover:bg-slate-800 border-2 border-slate-800 hover:border-cyan-500/50 p-4 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition relative group">
+                                    <span class="text-4xl mb-1 group-hover:scale-110 transition">🦌</span>
+                                    <span class="text-sm font-bold text-white">Nai</span>
+                                    <div class="text-xs font-mono text-amber-400 font-bold mt-1" id="bet-nai">0 Xu</div>
+                                </div>
+                                <!-- Bầu -->
+                                <div onclick="placeBet('bau')" class="baucua-bet-box bg-slate-950/80 hover:bg-slate-800 border-2 border-slate-800 hover:border-cyan-500/50 p-4 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition relative group">
+                                    <span class="text-4xl mb-1 group-hover:scale-110 transition">🎃</span>
+                                    <span class="text-sm font-bold text-white">Bầu</span>
+                                    <div class="text-xs font-mono text-amber-400 font-bold mt-1" id="bet-bau">0 Xu</div>
+                                </div>
+                                <!-- Gà -->
+                                <div onclick="placeBet('ga')" class="baucua-bet-box bg-slate-950/80 hover:bg-slate-800 border-2 border-slate-800 hover:border-cyan-500/50 p-4 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition relative group">
+                                    <span class="text-4xl mb-1 group-hover:scale-110 transition">🐓</span>
+                                    <span class="text-sm font-bold text-white">Gà</span>
+                                    <div class="text-xs font-mono text-amber-400 font-bold mt-1" id="bet-ga">0 Xu</div>
+                                </div>
+                                <!-- Cá -->
+                                <div onclick="placeBet('ca')" class="baucua-bet-box bg-slate-950/80 hover:bg-slate-800 border-2 border-slate-800 hover:border-cyan-500/50 p-4 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition relative group">
+                                    <span class="text-4xl mb-1 group-hover:scale-110 transition">🐟</span>
+                                    <span class="text-sm font-bold text-white">Cá</span>
+                                    <div class="text-xs font-mono text-amber-400 font-bold mt-1" id="bet-ca">0 Xu</div>
+                                </div>
+                                <!-- Cua -->
+                                <div onclick="placeBet('cua')" class="baucua-bet-box bg-slate-950/80 hover:bg-slate-800 border-2 border-slate-800 hover:border-cyan-500/50 p-4 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition relative group">
+                                    <span class="text-4xl mb-1 group-hover:scale-110 transition">🦀</span>
+                                    <span class="text-sm font-bold text-white">Cua</span>
+                                    <div class="text-xs font-mono text-amber-400 font-bold mt-1" id="bet-cua">0 Xu</div>
+                                </div>
+                                <!-- Tôm -->
+                                <div onclick="placeBet('tom')" class="baucua-bet-box bg-slate-950/80 hover:bg-slate-800 border-2 border-slate-800 hover:border-cyan-500/50 p-4 rounded-2xl flex flex-col items-center justify-center cursor-pointer transition relative group">
+                                    <span class="text-4xl mb-1 group-hover:scale-110 transition">🦐</span>
+                                    <span class="text-sm font-bold text-white">Tôm</span>
+                                    <div class="text-xs font-mono text-amber-400 font-bold mt-1" id="bet-tom">0 Xu</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Lịch sử các ván trước -->
+                    <div class="mt-4 pt-3 border-t border-slate-800 flex items-center gap-3">
+                        <span class="text-xs text-slate-500 font-medium">Lịch sử kết quả gần đây:</span>
+                        <div id="baucua-history-list" class="flex gap-2 text-sm">
+                            <span class="px-2 py-0.5 bg-slate-800 rounded-lg text-xs">🎃 🦀 🦐</span>
+                        </div>
+                    </div>
                 </div>
+
+                <!-- GAME 2: CỜ CARO LAN ĐỐI KHÁNG -->
+                <div id="game-caro" class="h-full hidden flex-col items-center justify-between">
+                    <!-- Trạng thái 2 người chơi & lượt đi -->
+                    <div class="w-full flex items-center justify-between bg-slate-950/70 p-3 rounded-2xl border border-slate-800 mb-2">
+                        <!-- Phe X -->
+                        <div class="flex items-center gap-2">
+                            <span class="w-7 h-7 rounded-lg bg-rose-500/20 text-rose-400 border border-rose-500/40 flex items-center justify-center font-extrabold text-sm">X</span>
+                            <div>
+                                <div class="text-xs font-bold text-white" id="caro-player-x">Đang trống</div>
+                                <div class="text-[10px] text-slate-400">Người chơi 1</div>
+                            </div>
+                            <button onclick="joinCaroRole('X')" id="caro-join-x-btn" class="ml-2 text-xs bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 px-3 py-1 rounded-xl transition">Vào phe X</button>
+                        </div>
+
+                        <!-- Trạng thái lượt -->
+                        <div class="text-center">
+                            <span class="text-xs px-3 py-1 rounded-full bg-slate-800 font-bold text-cyan-300 border border-slate-700" id="caro-turn-text">Lượt: Chờ người chơi</span>
+                        </div>
+
+                        <!-- Phe O -->
+                        <div class="flex items-center gap-2">
+                            <button onclick="joinCaroRole('O')" id="caro-join-o-btn" class="mr-2 text-xs bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 px-3 py-1 rounded-xl transition">Vào phe O</button>
+                            <div class="text-right">
+                                <div class="text-xs font-bold text-white" id="caro-player-o">Đang trống</div>
+                                <div class="text-[10px] text-slate-400">Người chơi 2</div>
+                            </div>
+                            <span class="w-7 h-7 rounded-lg bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 flex items-center justify-center font-extrabold text-sm">O</span>
+                        </div>
+                    </div>
+
+                    <!-- Bàn Cờ Caro 14x14 -->
+                    <div class="flex-1 flex items-center justify-center p-2 overflow-auto">
+                        <div id="caro-board" class="grid bg-slate-900 border-2 border-slate-700 rounded-xl overflow-hidden shadow-2xl" style="grid-template-columns: repeat(14, 28px);">
+                            <!-- Sinh tự động bằng JS -->
+                        </div>
+                    </div>
+
+                    <!-- Nút thao tác -->
+                    <div class="flex items-center gap-3 pt-2">
+                        <button onclick="resetCaroGame()" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-xl transition font-medium border border-slate-700">🔄 Đặt lại ván mới</button>
+                        <span class="text-xs text-slate-500">Quy luật: 5 quân cùng hàng (ngang/dọc/chéo) là thắng!</span>
+                    </div>
+                </div>
+
+                <!-- GAME 3: VÒNG QUAY MAY MẮN (LUCKY WHEEL) -->
+                <div id="game-wheel" class="h-full hidden flex flex-col items-center justify-center">
+                    <div class="flex flex-col items-center justify-center relative">
+                        <!-- Con trỏ vòng quay -->
+                        <div class="w-0 h-0 border-l-[14px] border-l-transparent border-r-[14px] border-r-transparent border-t-[24px] border-t-amber-400 absolute -top-3 z-30 drop-shadow-md"></div>
+                        
+                        <!-- Canvas Vòng Quay -->
+                        <canvas id="wheel-canvas" width="340" height="340" class="rounded-full shadow-2xl border-4 border-slate-800 bg-slate-950"></canvas>
+                        
+                        <!-- Nút bấm quay ở giữa -->
+                        <button onclick="spinWheel()" id="spin-wheel-btn" class="absolute z-20 w-16 h-16 rounded-full bg-gradient-to-tr from-amber-500 to-yellow-300 text-slate-950 font-extrabold text-xs shadow-xl active:scale-95 transition flex flex-col items-center justify-center border-2 border-white">
+                            <span>QUAY</span>
+                            <span class="text-[9px] font-normal">50 Xu</span>
+                        </button>
+                    </div>
+
+                    <div class="mt-4 text-center">
+                        <h4 class="text-base font-bold text-white mb-1" id="wheel-result-text">Hãy bấm QUAY để thử vận may văn phòng!</h4>
+                        <p class="text-xs text-slate-400">Các phần thưởng bao gồm: Trà sữa, miễn rửa chén, hát 1 bài, +1,000 Xu...</p>
+                    </div>
+                </div>
+
             </div>
         </div>
+
     </main>
 
     <!-- TRÌNH PHÁT NHẠC ẨN -->
@@ -262,18 +499,15 @@
         let adminName = '';
         let adminId = '';
 
-        // Thông tin link LAN & danh sách IP
         let currentRoomUrl = window.location.origin;
         let lanList = [];
 
+        // Hệ thống Xu cá nhân
+        let myCoins = parseInt(localStorage.getItem('vibe_music_coins') || '1000', 10);
+
         // Trạng thái Time-Sync
         let currentSong = null;
-        let playbackState = {
-            isPlaying: false,
-            startedAt: 0,
-            elapsedAtPause: 0,
-            duration: 0
-        };
+        let playbackState = { isPlaying: false, startedAt: 0, elapsedAtPause: 0, duration: 0 };
         let clockOffset = 0;
         let currentVolume = 80;
         let isMuted = false;
@@ -285,22 +519,384 @@
         if (currentUserName) {
             document.getElementById('username-input').value = currentUserName;
         }
+        updateCoinsDisplay();
 
-        // Khởi tạo YouTube Iframe Player
+        // ==========================================
+        // CHUYỂN ĐỔI TAB (PHÒNG NHẠC VS GAME ZONE)
+        // ==========================================
+        let currentActiveTab = 'music';
+        function switchTab(tab) {
+            currentActiveTab = tab;
+            const musicView = document.getElementById('music-view');
+            const gameView = document.getElementById('game-view');
+            const tabMusicBtn = document.getElementById('tab-music-btn');
+            const tabGameBtn = document.getElementById('tab-game-btn');
+
+            if (tab === 'music') {
+                musicView.classList.remove('hidden');
+                gameView.classList.add('hidden');
+                tabMusicBtn.className = "flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-cyan-500 text-slate-950 shadow-md";
+                tabGameBtn.className = "flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition text-slate-400 hover:text-white";
+            } else {
+                musicView.classList.add('hidden');
+                gameView.classList.remove('hidden');
+                gameView.classList.add('flex');
+                tabGameBtn.className = "flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition bg-cyan-500 text-slate-950 shadow-md";
+                tabMusicBtn.className = "flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition text-slate-400 hover:text-white";
+                drawLuckyWheel();
+            }
+        }
+
+        function selectMiniGame(game) {
+            const baucua = document.getElementById('game-baucua');
+            const caro = document.getElementById('game-caro');
+            const wheel = document.getElementById('game-wheel');
+
+            const btnBaucua = document.getElementById('subtab-baucua-btn');
+            const btnCaro = document.getElementById('subtab-caro-btn');
+            const btnWheel = document.getElementById('subtab-wheel-btn');
+
+            baucua.classList.add('hidden');
+            caro.classList.add('hidden');
+            wheel.classList.add('hidden');
+
+            btnBaucua.className = "px-4 py-2 rounded-xl text-xs font-bold transition bg-slate-800 hover:bg-slate-700 text-slate-300";
+            btnCaro.className = "px-4 py-2 rounded-xl text-xs font-bold transition bg-slate-800 hover:bg-slate-700 text-slate-300";
+            btnWheel.className = "px-4 py-2 rounded-xl text-xs font-bold transition bg-slate-800 hover:bg-slate-700 text-slate-300";
+
+            if (game === 'baucua') {
+                baucua.classList.remove('hidden');
+                btnBaucua.className = "px-4 py-2 rounded-xl text-xs font-bold transition bg-cyan-500 text-slate-950 shadow-md";
+            } else if (game === 'caro') {
+                caro.classList.remove('hidden');
+                caro.classList.add('flex');
+                btnCaro.className = "px-4 py-2 rounded-xl text-xs font-bold transition bg-cyan-500 text-slate-950 shadow-md";
+            } else if (game === 'wheel') {
+                wheel.classList.remove('hidden');
+                btnWheel.className = "px-4 py-2 rounded-xl text-xs font-bold transition bg-cyan-500 text-slate-950 shadow-md";
+                drawLuckyWheel();
+            }
+        }
+
+        // ==========================================
+        // QUẢN LÝ XU CÁ NHÂN
+        // ==========================================
+        function updateCoinsDisplay() {
+            document.getElementById('my-coins-display').innerText = myCoins.toLocaleString('vi-VN');
+            localStorage.setItem('vibe_music_coins', myCoins.toString());
+        }
+
+        function claimFreeCoins() {
+            myCoins += 500;
+            updateCoinsDisplay();
+            showToast("Đã nhận 500 Xu miễn phí từ văn phòng! 💰", "gold");
+        }
+
+        // ==========================================
+        // MINI GAME 1: BẦU CUA TÔM CÁ
+        // ==========================================
+        const baucuaEmojis = { nai: '🦌', bau: '🎃', ga: '🐓', ca: '🐟', cua: '🦀', tom: '🦐' };
+        let currentBetAmount = 10;
+        let myCurrentBets = { nai: 0, bau: 0, ga: 0, ca: 0, cua: 0, tom: 0 };
+        let isBowlCovered = false;
+
+        function setBetAmount(amt) {
+            currentBetAmount = amt;
+            document.querySelectorAll('.bet-chip-btn').forEach(btn => {
+                if (parseInt(btn.innerText, 10) === amt) {
+                    btn.className = "bet-chip-btn active px-2.5 py-1 rounded-lg font-bold text-xs bg-cyan-500 text-slate-950";
+                } else {
+                    btn.className = "bet-chip-btn px-2.5 py-1 rounded-lg font-bold text-xs bg-slate-700 text-slate-300";
+                }
+            });
+        }
+
+        function placeBet(item) {
+            if (myCoins < currentBetAmount) {
+                showToast("Bạn không đủ xu! Hãy bấm ➕ để nhận thêm xu miễn phí.", "error");
+                return;
+            }
+            myCoins -= currentBetAmount;
+            myCurrentBets[item] += currentBetAmount;
+            updateCoinsDisplay();
+            document.getElementById(`bet-${item}`).innerText = `${myCurrentBets[item]} Xu`;
+            document.getElementById(`bet-${item}`).parentElement.classList.add('border-cyan-400');
+        }
+
+        function clearAllBets() {
+            let totalRefund = Object.values(myCurrentBets).reduce((a, b) => a + b, 0);
+            myCoins += totalRefund;
+            myCurrentBets = { nai: 0, bau: 0, ga: 0, ca: 0, cua: 0, tom: 0 };
+            updateCoinsDisplay();
+            for (let k in myCurrentBets) {
+                document.getElementById(`bet-${k}`).innerText = `0 Xu`;
+                document.getElementById(`bet-${k}`).parentElement.classList.remove('border-cyan-400');
+            }
+        }
+
+        function shakeBauCua() {
+            if (socket) {
+                socket.emit('baucua:shake');
+            }
+        }
+
+        function handleBauCuaResult(dice, shaker) {
+            const bowl = document.getElementById('baucua-bowl-img');
+            const shakeBtn = document.getElementById('baucua-shake-btn');
+            const openBtn = document.getElementById('baucua-open-btn');
+            const statusEl = document.getElementById('baucua-status');
+
+            // Úp bát và rung lắc
+            bowl.style.transform = "translate(0, 0)";
+            bowl.classList.add('shaking');
+            statusEl.innerText = `${shaker} đang lắc bát...`;
+            shakeBtn.disabled = true;
+
+            setTimeout(() => {
+                bowl.classList.remove('shaking');
+                statusEl.innerText = "Đã lắc xong! Hãy bấm Mở Bát!";
+                openBtn.classList.remove('hidden');
+                isBowlCovered = true;
+
+                // Cập nhật 3 con xúc xắc bên dưới bát
+                const diceContainer = document.getElementById('baucua-dice-display');
+                diceContainer.innerHTML = dice.map(d => `<span class="text-2xl p-1 bg-white/90 rounded-lg shadow">${baucuaEmojis[d] || '🎲'}</span>`).join('');
+                
+                // Tự động mở bát sau 4 giây nếu người dùng không bấm
+                setTimeout(() => {
+                    if (isBowlCovered) openBauCuaBowl(dice);
+                }, 4000);
+            }, 1200);
+        }
+
+        function openBauCuaBowl(diceParam) {
+            if (!isBowlCovered) return;
+            isBowlCovered = false;
+
+            const bowl = document.getElementById('baucua-bowl-img');
+            const shakeBtn = document.getElementById('baucua-shake-btn');
+            const openBtn = document.getElementById('baucua-open-btn');
+            const statusEl = document.getElementById('baucua-status');
+
+            // Mở bát trượt lên
+            bowl.style.transform = "translate(0, -65px) rotate(-15deg)";
+            openBtn.classList.add('hidden');
+            shakeBtn.disabled = false;
+
+            // Tính tiền cược thắng/thua
+            const dice = diceParam || (lastReceivedDice || ['bau', 'cua', 'tom']);
+            let winAmount = 0;
+            let countMap = {};
+            dice.forEach(d => countMap[d] = (countMap[d] || 0) + 1);
+
+            for (let item in myCurrentBets) {
+                if (myCurrentBets[item] > 0) {
+                    if (countMap[item]) {
+                        // Trả lại gốc + tiền thắng tương ứng số mặt xuất hiện (x1, x2, x3)
+                        winAmount += myCurrentBets[item] + (myCurrentBets[item] * countMap[item]);
+                    }
+                }
+            }
+
+            if (winAmount > 0) {
+                myCoins += winAmount;
+                updateCoinsDisplay();
+                showToast(`🎉 Bạn đã trúng Bầu Cua nhận được +${winAmount} Xu!`, "gold");
+                statusEl.innerText = `Chúc mừng bạn đã thắng +${winAmount} Xu!`;
+            } else {
+                statusEl.innerText = "Rất tiếc ván này bạn chưa trúng, chúc may mắn lần sau!";
+            }
+
+            // Reset cược
+            myCurrentBets = { nai: 0, bau: 0, ga: 0, ca: 0, cua: 0, tom: 0 };
+            for (let k in myCurrentBets) {
+                document.getElementById(`bet-${k}`).innerText = `0 Xu`;
+                document.getElementById(`bet-${k}`).parentElement.classList.remove('border-cyan-400');
+            }
+        }
+
+        let lastReceivedDice = null;
+
+        // ==========================================
+        // MINI GAME 2: CỜ CARO LAN (14x14)
+        // ==========================================
+        const CARO_SIZE = 14;
+        let caroStateLocal = null;
+
+        function initCaroBoardUI() {
+            const boardEl = document.getElementById('caro-board');
+            boardEl.innerHTML = "";
+            for (let i = 0; i < CARO_SIZE * CARO_SIZE; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'caro-cell bg-slate-950/80';
+                cell.dataset.index = i;
+                cell.onclick = () => onCaroCellClick(i);
+                boardEl.appendChild(cell);
+            }
+        }
+        initCaroBoardUI();
+
+        function renderCaroBoard(game) {
+            caroStateLocal = game;
+            const cells = document.querySelectorAll('.caro-cell');
+            
+            game.board.forEach((val, idx) => {
+                const cell = cells[idx];
+                cell.className = 'caro-cell bg-slate-950/80';
+                if (val === 'X') {
+                    cell.innerHTML = '<span class="text-rose-400">X</span>';
+                } else if (val === 'O') {
+                    cell.innerHTML = '<span class="text-cyan-400">O</span>';
+                } else {
+                    cell.innerHTML = '';
+                }
+            });
+
+            if (game.winningCells && game.winningCells.length > 0) {
+                game.winningCells.forEach(idx => {
+                    cells[idx].classList.add('winning');
+                });
+            }
+
+            document.getElementById('caro-player-x').innerText = game.players.X ? game.players.X.name : 'Đang trống';
+            document.getElementById('caro-player-o').innerText = game.players.O ? game.players.O.name : 'Đang trống';
+
+            const turnEl = document.getElementById('caro-turn-text');
+            if (game.winner) {
+                turnEl.innerText = game.winner === 'Hòa' ? 'Kết quả: Hòa!' : `🏆 Phe ${game.winner} Thắng!`;
+                turnEl.className = "text-xs px-3 py-1 rounded-full bg-amber-500/20 font-bold text-amber-300 border border-amber-500/40";
+            } else {
+                turnEl.innerText = `Lượt đi: Phe ${game.turn}`;
+                turnEl.className = game.turn === 'X' 
+                    ? "text-xs px-3 py-1 rounded-full bg-rose-500/20 font-bold text-rose-300 border border-rose-500/40"
+                    : "text-xs px-3 py-1 rounded-full bg-cyan-500/20 font-bold text-cyan-300 border border-cyan-500/40";
+            }
+        }
+
+        function onCaroCellClick(idx) {
+            if (!socket || !caroStateLocal) return;
+            socket.emit('caro:move', idx);
+        }
+
+        function joinCaroRole(role) {
+            if (!socket) return;
+            socket.emit('caro:join', role);
+        }
+
+        function resetCaroGame() {
+            if (!socket) return;
+            socket.emit('caro:reset');
+        }
+
+        // ==========================================
+        // MINI GAME 3: VÒNG QUAY MAY MẮN (CANVAS)
+        // ==========================================
+        const wheelSegments = [
+            { text: "🧋 Trà Sữa", color: "#06b6d4" },
+            { text: "💰 +500 Xu", color: "#f59e0b" },
+            { text: "🧹 Rửa Chén", color: "#ef4444" },
+            { text: "🎤 Hát 1 Bài", color: "#a855f7" },
+            { text: "☕ Pha Cà Phê", color: "#3b82f6" },
+            { text: "👑 #1 Bài Hát", color: "#10b981" },
+            { text: "💰 +1,000 Xu", color: "#ec4899" },
+            { text: "✨ May Mắn Sau", color: "#64748b" }
+        ];
+
+        let wheelAngle = 0;
+        let isSpinning = false;
+
+        function drawLuckyWheel() {
+            const canvas = document.getElementById('wheel-canvas');
+            if (!canvas) return;
+            const ctx = canvas.getContext('2d');
+            const numSegments = wheelSegments.length;
+            const arcSize = (2 * Math.PI) / numSegments;
+            const radius = canvas.width / 2;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            for (let i = 0; i < numSegments; i++) {
+                const angle = wheelAngle + i * arcSize;
+                ctx.beginPath();
+                ctx.fillStyle = wheelSegments[i].color;
+                ctx.moveTo(radius, radius);
+                ctx.arc(radius, radius, radius - 6, angle, angle + arcSize);
+                ctx.lineTo(radius, radius);
+                ctx.fill();
+                ctx.stroke();
+
+                // Vẽ text
+                ctx.save();
+                ctx.translate(radius, radius);
+                ctx.rotate(angle + arcSize / 2);
+                ctx.textAlign = "right";
+                ctx.fillStyle = "#ffffff";
+                ctx.font = "bold 13px Inter";
+                ctx.fillText(wheelSegments[i].text, radius - 20, 5);
+                ctx.restore();
+            }
+        }
+
+        function spinWheel() {
+            if (isSpinning) return;
+            if (myCoins < 50) {
+                showToast("Cần 50 xu để quay! Hãy bấm ➕ để nhận thêm xu.", "error");
+                return;
+            }
+
+            myCoins -= 50;
+            updateCoinsDisplay();
+            isSpinning = true;
+            document.getElementById('spin-wheel-btn').disabled = true;
+
+            const extraSpins = 5 + Math.random() * 5;
+            const targetAngle = wheelAngle + extraSpins * 2 * Math.PI + Math.random() * 2 * Math.PI;
+            const duration = 4000;
+            const startTime = performance.now();
+            const startAngle = wheelAngle;
+
+            function animate(time) {
+                const elapsed = time - startTime;
+                const progress = Math.min(1, elapsed / duration);
+                const easeOut = 1 - Math.pow(1 - progress, 3);
+                wheelAngle = startAngle + (targetAngle - startAngle) * easeOut;
+                drawLuckyWheel();
+
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                } else {
+                    isSpinning = false;
+                    document.getElementById('spin-wheel-btn').disabled = false;
+
+                    // Tính kết quả
+                    const arcSize = (2 * Math.PI) / wheelSegments.length;
+                    const normalized = ( (3 * Math.PI / 2) - (wheelAngle % (2 * Math.PI)) + (4 * Math.PI) ) % (2 * Math.PI);
+                    const selectedIdx = Math.floor(normalized / arcSize) % wheelSegments.length;
+                    const win = wheelSegments[selectedIdx];
+
+                    document.getElementById('wheel-result-text').innerText = `🎉 Bạn quay trúng: ${win.text}!`;
+                    showToast(`Quay trúng: ${win.text}!`, "gold");
+
+                    if (win.text.includes("+500")) {
+                        myCoins += 500; updateCoinsDisplay();
+                    } else if (win.text.includes("+1,000")) {
+                        myCoins += 1000; updateCoinsDisplay();
+                    }
+                }
+            }
+            requestAnimationFrame(animate);
+        }
+
+        // ==========================================
+        // YOUTUBE & AUDIO PLAYER ENGINE
+        // ==========================================
         window.onYouTubeIframeAPIReady = function() {
             ytPlayer = new YT.Player('yt-player', {
                 height: '180',
                 width: '320',
-                playerVars: {
-                    autoplay: 0,
-                    controls: 0,
-                    disablekb: 1,
-                    fs: 0,
-                    rel: 0,
-                    modestbranding: 1
-                },
+                playerVars: { autoplay: 0, controls: 0, disablekb: 1, fs: 0, rel: 0, modestbranding: 1 },
                 events: {
-                    onReady: (event) => {
+                    onReady: () => {
                         isYtReady = true;
                         ytPlayer.setVolume(currentVolume);
                         if (isMuted) ytPlayer.mute();
@@ -310,12 +906,11 @@
             });
         };
 
-        // Lấy thông tin server-info từ API khi mở trang
+        // Lấy thông tin server-info (QR & LAN IP)
         fetch('/api/server-info')
             .then(res => res.json())
             .then(data => {
                 if (data.primaryLanUrl) {
-                    // Nếu đang truy cập qua localhost, ưu tiên dùng LAN URL cho nút share và QR
                     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
                         currentRoomUrl = data.primaryLanUrl;
                     }
@@ -349,38 +944,24 @@
             document.getElementById('qr-img').src = `/api/qr?url=${encodeURIComponent(newUrl)}`;
         }
 
-        // Mở Modal Quét QR & Share Link
-        function openShareModal() {
-            document.getElementById('share-modal').classList.remove('hidden');
-        }
+        function openShareModal() { document.getElementById('share-modal').classList.remove('hidden'); }
+        function closeShareModal() { document.getElementById('share-modal').classList.add('hidden'); }
 
-        function closeShareModal() {
-            document.getElementById('share-modal').classList.add('hidden');
-        }
-
-        // Đóng khi click ngoài khung modal
         document.getElementById('share-modal').addEventListener('click', (e) => {
-            if (e.target === document.getElementById('share-modal')) {
-                closeShareModal();
-            }
+            if (e.target === document.getElementById('share-modal')) closeShareModal();
         });
 
-        // Sao chép Link mời tham gia phòng (Hỗ trợ cả HTTP mạng LAN không có HTTPS)
         function copyShareLink() {
             const url = document.getElementById('share-link-input').value || currentRoomUrl;
-            
             function onCopied() {
-                const btnText = document.getElementById('copy-btn-text');
-                const btnIcon = document.getElementById('copy-btn-icon');
-                btnText.innerText = "Đã sao chép!";
-                btnIcon.innerText = "✅";
+                document.getElementById('copy-btn-text').innerText = "Đã sao chép!";
+                document.getElementById('copy-btn-icon').innerText = "✅";
                 showToast(`Đã sao chép link phòng: ${url}`, "success");
                 setTimeout(() => {
-                    btnText.innerText = "Sao chép Link";
-                    btnIcon.innerText = "📋";
+                    document.getElementById('copy-btn-text').innerText = "Sao chép Link";
+                    document.getElementById('copy-btn-icon').innerText = "📋";
                 }, 2500);
             }
-
             if (navigator.clipboard && window.isSecureContext) {
                 navigator.clipboard.writeText(url).then(onCopied).catch(() => fallbackCopy(url, onCopied));
             } else {
@@ -389,26 +970,20 @@
         }
 
         function fallbackCopy(text, callback) {
-            const tempInput = document.createElement('input');
-            tempInput.value = text;
-            document.body.appendChild(tempInput);
-            tempInput.select();
-            try {
-                document.execCommand('copy');
-                callback();
-            } catch (err) {
-                prompt("Hãy copy đường link này để vào phòng:", text);
-            }
-            document.body.removeChild(tempInput);
+            const temp = document.createElement('input');
+            temp.value = text;
+            document.body.appendChild(temp);
+            temp.select();
+            try { document.execCommand('copy'); callback(); } catch (err) { prompt("Copy link:", text); }
+            document.body.removeChild(temp);
         }
 
-        // ĐĂNG NHẬP & VÀO PHÒNG
+        // ==========================================
+        // SOCKET.IO REALTIME EVENTS
+        // ==========================================
         function joinRoom() {
             const input = document.getElementById('username-input').value.trim();
-            if (!input) {
-                alert("Vui lòng nhập biệt danh của bạn!");
-                return;
-            }
+            if (!input) return alert("Vui lòng nhập biệt danh của bạn!");
 
             currentUserName = input;
             localStorage.setItem('lan_music_username', currentUserName);
@@ -431,11 +1006,7 @@
 
         function initSocket() {
             if (socket) return;
-
-            socket = io({
-                reconnectionAttempts: 10,
-                timeout: 5000
-            });
+            socket = io({ reconnectionAttempts: 10, timeout: 5000 });
 
             socket.on('connect', () => {
                 showToast("Đã kết nối tới Server LAN! 🚀", "success");
@@ -465,16 +1036,13 @@
                 }
 
                 updateAdminUI();
-                if (data.currentSong) {
-                    updateCurrentSong(data.currentSong, data.playback);
-                }
+                if (data.currentSong) updateCurrentSong(data.currentSong, data.playback);
                 renderPlaylist(data.playlist || []);
                 updateOnlineCount(data.users ? data.users.length : 1);
+                if (data.caroGame) renderCaroBoard(data.caroGame);
             });
 
-            socket.on('users:update', (data) => {
-                updateOnlineCount(data.count);
-            });
+            socket.on('users:update', (data) => updateOnlineCount(data.count));
 
             socket.on('admin:update', (data) => {
                 adminId = data.adminId;
@@ -497,7 +1065,6 @@
                 playbackState.elapsedAtPause = data.currentTime;
                 playbackState.startedAt = Date.now();
                 clockOffset = data.serverTime - Date.now();
-
                 syncLocalPlayerToCurrentState();
                 updatePlayPauseButton();
             });
@@ -509,9 +1076,7 @@
                     if (isYtReady && currentSong.youtubeId) {
                         try {
                             const cur = ytPlayer.getCurrentTime();
-                            if (Math.abs(cur - expected) > 2) {
-                                ytPlayer.seekTo(expected, true);
-                            }
+                            if (Math.abs(cur - expected) > 2) ytPlayer.seekTo(expected, true);
                         } catch (e) {}
                     }
                 }
@@ -528,30 +1093,29 @@
 
             socket.on('playlist:update', (list) => renderPlaylist(list));
             socket.on('control:error', (err) => showToast(err.message, "error"));
+
+            // Realtime Game Events
+            socket.on('caro:state', (game) => renderCaroBoard(game));
+            socket.on('baucua:result', (data) => {
+                lastReceivedDice = data.dice;
+                handleBauCuaResult(data.dice, data.shaker);
+            });
+            socket.on('game:toast', (data) => showToast(data.message, "error"));
         }
 
         function measurePing() {
             if (!socket || !socket.connected) return;
             const t0 = Date.now();
             socket.emit('lan:ping', t0, (res) => {
-                const t1 = Date.now();
-                const rtt = t1 - t0;
-                const latency = Math.round(rtt / 2);
-                
-                clockOffset = (res.serverTimestamp + latency) - t1;
-
+                const latency = Math.round((Date.now() - t0) / 2);
+                clockOffset = (res.serverTimestamp + latency) - Date.now();
                 const pingEl = document.getElementById('ping-val');
                 const dotEl = document.getElementById('ping-dot');
                 if (pingEl) pingEl.innerText = `${latency} ms`;
-
                 if (dotEl) {
-                    if (latency < 25) {
-                        dotEl.className = 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse';
-                    } else if (latency < 70) {
-                        dotEl.className = 'w-2 h-2 rounded-full bg-amber-400';
-                    } else {
-                        dotEl.className = 'w-2 h-2 rounded-full bg-rose-400';
-                    }
+                    dotEl.className = latency < 25 
+                        ? 'w-2 h-2 rounded-full bg-emerald-400 animate-pulse' 
+                        : (latency < 70 ? 'w-2 h-2 rounded-full bg-amber-400' : 'w-2 h-2 rounded-full bg-rose-400');
                 }
             });
         }
@@ -568,19 +1132,17 @@
 
             if (isCurrentAdmin) {
                 badgeText.innerText = "Bạn là Admin (Chủ phòng)";
-                badge.className = "text-xs bg-amber-500/20 text-amber-300 px-3.5 py-1.5 rounded-full border border-amber-500/50 font-semibold inline-flex items-center gap-1.5 transition-all admin-glow";
+                badge.className = "text-xs bg-amber-500/20 text-amber-300 px-3 py-1.5 rounded-full border border-amber-500/50 font-semibold inline-flex items-center gap-1.5 transition-all admin-glow";
                 roleTag.classList.remove('hidden');
                 controlHint.innerText = "Quyền điều khiển: Bạn là Admin";
-
                 playBtn.disabled = false;
                 prevBtn.disabled = false;
                 nextBtn.disabled = false;
             } else {
                 badgeText.innerText = `Admin: ${adminName || 'Đang cập nhật'}`;
-                badge.className = "text-xs bg-slate-800 text-slate-300 px-3.5 py-1.5 rounded-full border border-slate-700 font-medium inline-flex items-center gap-1.5 transition-all";
+                badge.className = "text-xs bg-slate-800 text-slate-300 px-3 py-1.5 rounded-full border border-slate-700 font-medium inline-flex items-center gap-1.5 transition-all";
                 roleTag.classList.add('hidden');
                 controlHint.innerText = `Chỉ Admin (${adminName || '...'}) mới có quyền điều khiển`;
-
                 playBtn.disabled = true;
                 prevBtn.disabled = true;
                 nextBtn.disabled = true;
@@ -594,7 +1156,6 @@
 
         function updateCurrentSong(song, syncInfo) {
             currentSong = song;
-
             const titleEl = document.getElementById('current-song-title');
             const userEl = document.getElementById('current-song-user');
             const thumbEl = document.getElementById('current-song-thumb');
@@ -635,11 +1196,7 @@
         }
 
         function syncLocalPlayerToCurrentState() {
-            if (!currentSong) {
-                stopAllPlayers();
-                return;
-            }
-
+            if (!currentSong) return stopAllPlayers();
             const targetTime = getComputedCurrentTime();
 
             if (currentSong.youtubeId) {
@@ -647,62 +1204,33 @@
                 if (isYtReady && ytPlayer) {
                     try {
                         const currentYtUrl = ytPlayer.getVideoUrl && ytPlayer.getVideoUrl();
-                        const isSameVideo = currentYtUrl && currentYtUrl.includes(currentSong.youtubeId);
-
-                        if (!isSameVideo) {
-                            ytPlayer.loadVideoById({
-                                videoId: currentSong.youtubeId,
-                                startSeconds: Math.floor(targetTime)
-                            });
-                        } else {
-                            const cur = ytPlayer.getCurrentTime();
-                            if (Math.abs(cur - targetTime) > 1.5) {
-                                ytPlayer.seekTo(targetTime, true);
-                            }
+                        if (!currentYtUrl || !currentYtUrl.includes(currentSong.youtubeId)) {
+                            ytPlayer.loadVideoById({ videoId: currentSong.youtubeId, startSeconds: Math.floor(targetTime) });
+                        } else if (Math.abs(ytPlayer.getCurrentTime() - targetTime) > 1.5) {
+                            ytPlayer.seekTo(targetTime, true);
                         }
-
-                        if (playbackState.isPlaying) {
-                            ytPlayer.playVideo();
-                        } else {
-                            ytPlayer.pauseVideo();
-                        }
-
+                        playbackState.isPlaying ? ytPlayer.playVideo() : ytPlayer.pauseVideo();
                         setTimeout(() => {
                             if (ytPlayer && ytPlayer.getDuration) {
                                 const realDuration = ytPlayer.getDuration();
                                 const realTitle = ytPlayer.getVideoData ? ytPlayer.getVideoData().title : '';
                                 if (realDuration > 0 && socket) {
-                                    socket.emit('song:update_meta', {
-                                        songId: currentSong.id,
-                                        duration: realDuration,
-                                        title: realTitle
-                                    });
+                                    socket.emit('song:update_meta', { songId: currentSong.id, duration: realDuration, title: realTitle });
                                 }
                             }
                         }, 2500);
-                    } catch (err) {
-                        console.error("YouTube Player error:", err);
-                    }
+                    } catch (err) {}
                 }
             } else if (currentSong.audioUrl) {
                 if (isYtReady && ytPlayer) ytPlayer.stopVideo();
-
-                if (html5Audio.src !== currentSong.audioUrl) {
-                    html5Audio.src = currentSong.audioUrl;
-                }
+                if (html5Audio.src !== currentSong.audioUrl) html5Audio.src = currentSong.audioUrl;
                 html5Audio.currentTime = targetTime;
-                if (playbackState.isPlaying && !isMuted) {
-                    html5Audio.play().catch(() => {});
-                } else {
-                    html5Audio.pause();
-                }
+                playbackState.isPlaying && !isMuted ? html5Audio.play().catch(()=>{}) : html5Audio.pause();
             }
         }
 
         function stopAllPlayers() {
-            if (isYtReady && ytPlayer) {
-                try { ytPlayer.stopVideo(); } catch (e) {}
-            }
+            if (isYtReady && ytPlayer) { try { ytPlayer.stopVideo(); } catch(e) {} }
             if (html5Audio) html5Audio.pause();
         }
 
@@ -721,38 +1249,21 @@
         setInterval(() => {
             if (!currentSong) return;
             const timeNow = getComputedCurrentTime();
-            const duration = currentSong.duration || 1;
-            const pct = Math.min(100, (timeNow / duration) * 100);
-
+            const pct = Math.min(100, (timeNow / (currentSong.duration || 1)) * 100);
             document.getElementById('current-time').innerText = formatSeconds(timeNow);
             document.getElementById('progress-bar').style.width = `${pct}%`;
         }, 200);
 
         document.getElementById('progress-container').addEventListener('click', (e) => {
-            if (!isCurrentAdmin) {
-                showToast("Chỉ Admin mới có thể tua thời gian phát!", "info");
-                return;
-            }
-            if (!currentSong) return;
-
+            if (!isCurrentAdmin || !currentSong) return;
             const rect = e.currentTarget.getBoundingClientRect();
-            const clickX = e.clientX - rect.left;
-            const pct = Math.max(0, Math.min(1, clickX / rect.width));
-            const targetSeconds = pct * currentSong.duration;
-
-            socket.emit('control:action', {
-                action: 'seek',
-                time: targetSeconds
-            });
+            const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            socket.emit('control:action', { action: 'seek', time: pct * currentSong.duration });
         });
 
         function sendControl(action) {
-            if (!isCurrentAdmin) {
-                showToast("Chỉ Admin mới có quyền điều khiển bài hát!", "error");
-                return;
-            }
-            if (!socket) return;
-            socket.emit('control:action', { action });
+            if (!isCurrentAdmin) return showToast("Chỉ Admin mới có quyền điều khiển!", "error");
+            if (socket) socket.emit('control:action', { action });
         }
 
         function changeVolume(val) {
@@ -768,52 +1279,38 @@
             const icon = document.getElementById('mute-icon');
 
             if (isMuted) {
-                text.innerText = "Đã tắt tiếng riêng";
+                text.innerText = "Đã tắt tiếng";
                 icon.innerText = "🔇";
-                btn.className = "flex items-center gap-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 px-4 py-2 rounded-xl text-xs border border-red-500/50 transition font-medium cursor-pointer shadow-sm";
+                btn.className = "flex items-center gap-2 bg-red-500/20 text-red-400 px-4 py-2 rounded-xl text-xs border border-red-500/50 transition font-medium cursor-pointer shadow-sm";
                 if (isYtReady && ytPlayer) ytPlayer.mute();
                 if (html5Audio) html5Audio.muted = true;
-                showToast("Đã tắt âm thanh trên máy của bạn", "info");
             } else {
                 text.innerText = "Tắt tiếng cá nhân";
                 icon.innerText = "🔊";
-                btn.className = "flex items-center gap-2 bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 px-4 py-2 rounded-xl text-xs border border-slate-700 transition font-medium cursor-pointer shadow-sm";
+                btn.className = "flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-xl text-xs border border-slate-700 transition font-medium cursor-pointer shadow-sm";
                 if (isYtReady && ytPlayer) ytPlayer.unMute();
                 if (html5Audio) html5Audio.muted = false;
-                showToast("Đã bật lại âm thanh", "info");
             }
         }
 
         function addSong() {
             const input = document.getElementById('song-input');
             const query = input.value.trim();
-            if (!query) {
-                input.focus();
-                return;
-            }
-
-            if (!socket || !socket.connected) {
-                showToast("Chưa kết nối tới server!", "error");
-                return;
-            }
-
+            if (!query || !socket) return;
             socket.emit('song:add', { query });
             input.value = "";
             showToast("Đã gửi đề xuất bài hát!", "success");
         }
 
         function voteSong(songId, type) {
-            if (!socket) return;
-            socket.emit('song:vote', { songId, type });
+            if (socket) socket.emit('song:vote', { songId, type });
         }
 
         function renderPlaylist(list) {
             const container = document.getElementById('playlist-container');
-            const queueCount = document.getElementById('queue-count');
-            queueCount.innerText = `${list.length} bài`;
-
+            document.getElementById('queue-count').innerText = `${list.length} bài`;
             if (!list || list.length === 0) {
-                container.innerHTML = `<p class="text-xs text-slate-500 text-center py-10">Hàng chờ đang trống. Hãy thêm bài hát mới!</p>`;
+                container.innerHTML = `<p class="text-xs text-slate-500 text-center py-10">Hàng chờ đang trống...</p>`;
                 return;
             }
 
@@ -821,30 +1318,24 @@
             list.forEach((song, idx) => {
                 const userVote = song.votes ? (song.votes[myUserId] || 0) : 0;
                 const score = song.voteScore || 0;
-                const scoreColor = score > 0 ? "text-emerald-400" : (score < 0 ? "text-rose-400" : "text-slate-400");
                 const upActive = userVote === 1 ? "bg-cyan-500/20 border-cyan-500/60 text-cyan-300" : "bg-slate-800 hover:bg-slate-700 text-slate-400 border-slate-700/60";
                 const downActive = userVote === -1 ? "bg-rose-500/20 border-rose-500/60 text-rose-300" : "bg-slate-800 hover:bg-slate-700 text-slate-400 border-slate-700/60";
 
                 html += `
-                <div class="flex items-center gap-3 p-3 bg-slate-800/40 hover:bg-slate-800/70 rounded-2xl border border-slate-700/50 transition duration-200 group">
+                <div class="flex items-center gap-3 p-3 bg-slate-800/40 hover:bg-slate-800/70 rounded-2xl border border-slate-700/50 transition">
                     <span class="text-xs font-bold text-slate-500 w-5 text-center font-mono">#${idx + 1}</span>
-                    <div class="relative w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 bg-slate-800 border border-slate-700">
-                        <img src="${song.thumbnail}" class="w-full h-full object-cover">
-                    </div>
+                    <img src="${song.thumbnail}" class="w-12 h-12 rounded-xl object-cover bg-slate-800 border border-slate-700">
                     <div class="flex-1 min-w-0">
-                        <div class="text-sm font-semibold text-white truncate" title="${escapeHtml(song.title)}">${escapeHtml(song.title)}</div>
+                        <div class="text-sm font-semibold text-white truncate">${escapeHtml(song.title)}</div>
                         <div class="text-xs text-slate-400 truncate">Bởi: <span class="text-slate-300">${escapeHtml(song.addedBy)}</span></div>
                     </div>
                     <div class="flex items-center gap-1.5 bg-slate-900/90 px-2 py-1 rounded-xl border border-slate-700/70">
-                        <button onclick="voteSong('${song.id}', 1)" title="Vote Up (Ưu tiên bài này lên trước)" 
-                            class="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold border transition active:scale-90 ${upActive}">▲</button>
-                        <span class="font-bold text-xs min-w-[20px] text-center font-mono ${scoreColor}">${score > 0 ? '+' + score : score}</span>
-                        <button onclick="voteSong('${song.id}', -1)" title="Vote Down" 
-                            class="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold border transition active:scale-90 ${downActive}">▼</button>
+                        <button onclick="voteSong('${song.id}', 1)" class="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold border transition active:scale-90 ${upActive}">▲</button>
+                        <span class="font-bold text-xs min-w-[20px] text-center font-mono ${score > 0 ? 'text-emerald-400' : 'text-slate-400'}">${score > 0 ? '+' + score : score}</span>
+                        <button onclick="voteSong('${song.id}', -1)" class="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold border transition active:scale-90 ${downActive}">▼</button>
                     </div>
                 </div>`;
             });
-
             container.innerHTML = html;
         }
 
@@ -852,7 +1343,6 @@
             const input = document.getElementById('chat-input');
             const message = input.value.trim();
             if (!message || !socket) return;
-
             socket.emit('chat:send', { message });
             input.value = "";
         }
@@ -864,7 +1354,6 @@
 
             const div = document.createElement('div');
             div.className = `flex flex-col ${isMe ? 'items-end' : 'items-start'}`;
-
             div.innerHTML = `
                 <div class="flex items-center gap-1.5 mb-1 text-[11px] text-slate-400">
                     <span class="font-semibold ${isMe ? 'text-cyan-300' : 'text-slate-300'}">${escapeHtml(msg.sender)}</span>
@@ -898,15 +1387,7 @@
 
         function escapeHtml(text) {
             if (!text) return "";
-            return text.replace(/[&<>"']/g, function(m) {
-                return {
-                    '&': '&amp;',
-                    '<': '&lt;',
-                    '>': '&gt;',
-                    '"': '&quot;',
-                    "'": '&#039;'
-                }[m];
-            });
+            return text.replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' })[m]);
         }
 
         function showToast(msg, type = "info") {

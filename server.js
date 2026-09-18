@@ -55,7 +55,7 @@ app.get('/', (req, res) => {
     } else if (fs.existsSync(rootIndex)) {
         res.sendFile(rootIndex);
     } else {
-        res.send('<h1>LAN Music Office Server is Running</h1>');
+        res.send('<h1>LAN Music Office & Game Zone Server is Running</h1>');
     }
 });
 
@@ -74,7 +74,7 @@ app.get('/api/server-info', (req, res) => {
     });
 });
 
-// API tạo mã QR Vector SVG trực tiếp từ server (hoạt động 100% offline không cần CDN)
+// API tạo mã QR Vector SVG
 app.get('/api/qr', async (req, res) => {
     try {
         const targetUrl = req.query.url || getPrimaryLanUrl();
@@ -83,8 +83,8 @@ app.get('/api/qr', async (req, res) => {
             margin: 1,
             width: 280,
             color: {
-                dark: '#0f172a',  // Màu đen xanh sang trọng
-                light: '#ffffff'  // Nền trắng rõ nét cho camera quét
+                dark: '#0f172a',
+                light: '#ffffff'
             }
         });
         res.type('image/svg+xml').send(svgString);
@@ -94,7 +94,7 @@ app.get('/api/qr', async (req, res) => {
 });
 
 // ==========================================
-// TRẠNG THÁI HỆ THỐNG (IN-MEMORY STATE)
+// TRẠNG THÁI PHÒNG NHẠC (MUSIC STATE)
 // ==========================================
 const users = new Map();
 let adminSocketId = null;
@@ -258,6 +258,78 @@ function extractYouTubeId(url) {
 }
 
 // ==========================================
+// TRẠNG THÁI GAME ZONE (MINI GAMES)
+// ==========================================
+
+// 1. CỜ CARO LAN ĐỐI KHÁNG
+const CARO_SIZE = 14;
+let caroGame = {
+    board: Array(CARO_SIZE * CARO_SIZE).fill(null),
+    turn: 'X',
+    players: { X: null, O: null }, // { id, name }
+    winner: null,
+    winningCells: [],
+    moveCount: 0
+};
+
+function checkCaroWin(board, lastIdx) {
+    if (lastIdx === null || lastIdx < 0) return null;
+    const sym = board[lastIdx];
+    if (!sym) return null;
+
+    const r = Math.floor(lastIdx / CARO_SIZE);
+    const c = lastIdx % CARO_SIZE;
+    const dirs = [
+        [0, 1],   // Ngang
+        [1, 0],   // Dọc
+        [1, 1],   // Chéo \
+        [1, -1]   // Chéo /
+    ];
+
+    for (const [dr, dc] of dirs) {
+        let cells = [lastIdx];
+        // Tiến
+        let s = 1;
+        while (true) {
+            const nr = r + dr * s;
+            const nc = c + dc * s;
+            if (nr < 0 || nr >= CARO_SIZE || nc < 0 || nc >= CARO_SIZE) break;
+            const idx = nr * CARO_SIZE + nc;
+            if (board[idx] === sym) {
+                cells.push(idx);
+                s++;
+            } else break;
+        }
+        // Lùi
+        s = 1;
+        while (true) {
+            const nr = r - dr * s;
+            const nc = c - dc * s;
+            if (nr < 0 || nr >= CARO_SIZE || nc < 0 || nc >= CARO_SIZE) break;
+            const idx = nr * CARO_SIZE + nc;
+            if (board[idx] === sym) {
+                cells.push(idx);
+                s++;
+            } else break;
+        }
+
+        if (cells.length >= 5) {
+            return { winner: sym, winningCells: cells };
+        }
+    }
+    return null;
+}
+
+// 2. BẦU CUA TÔM CÁ LAN
+const BAUCUA_ITEMS = ['nai', 'bau', 'ga', 'ca', 'cua', 'tom'];
+let baucuaState = {
+    isRolling: false,
+    lastDice: ['bau', 'cua', 'tom'],
+    lastShaker: 'Hệ Thống',
+    history: []
+};
+
+// ==========================================
 // SOCKET.IO REALTIME EVENTS
 // ==========================================
 io.on('connection', (socket) => {
@@ -286,15 +358,11 @@ io.on('connection', (socket) => {
         };
 
         users.set(socket.id, user);
-
-        if (isFirstUser) {
-            adminSocketId = socket.id;
-        }
+        if (isFirstUser) adminSocketId = socket.id;
 
         const ips = getLanIPs();
         const primaryLanUrl = getPrimaryLanUrl();
 
-        // Gửi xác nhận cho chính client kèm thông tin LAN và mã QR
         socket.emit('user:join_ack', {
             currentUser: user,
             adminId: adminSocketId,
@@ -312,7 +380,9 @@ io.on('connection', (socket) => {
                 name: item.name,
                 ip: item.address,
                 url: `http://${item.address}:${PORT}`
-            }))
+            })),
+            caroGame: caroGame,
+            baucuaState: baucuaState
         });
 
         io.emit('users:update', {
@@ -445,7 +515,7 @@ io.on('connection', (socket) => {
         io.emit('playlist:update', playlist);
     });
 
-    // 5. ĐIỀU KHIỂN PHÁT NHẠC
+    // 5. ĐIỀU KHIỂN PHÁT NHẠC (ADMIN)
     socket.on('control:action', (data) => {
         const user = users.get(socket.id);
         if (!user) return;
@@ -513,12 +583,142 @@ io.on('connection', (socket) => {
         }
     });
 
+    // ==========================================
+    // SOCKET EVENTS: CỜ CARO LAN
+    // ==========================================
+    socket.on('caro:join', (role) => {
+        const user = users.get(socket.id);
+        if (!user) return;
+
+        if (role === 'X' || role === 'O') {
+            // Kiểm tra ghế còn trống không
+            if (!caroGame.players[role] || caroGame.players[role].id === socket.id) {
+                caroGame.players[role] = { id: socket.id, name: user.username };
+                io.emit('caro:state', caroGame);
+                io.emit('chat:system', {
+                    text: `⚔️ ${user.username} đã tham gia bàn cờ Caro (Phe ${role})!`,
+                    time: new Date().toLocaleTimeString('vi-VN')
+                });
+            }
+        }
+    });
+
+    socket.on('caro:leave', () => {
+        let changed = false;
+        if (caroGame.players.X && caroGame.players.X.id === socket.id) {
+            caroGame.players.X = null;
+            changed = true;
+        }
+        if (caroGame.players.O && caroGame.players.O.id === socket.id) {
+            caroGame.players.O = null;
+            changed = true;
+        }
+        if (changed) io.emit('caro:state', caroGame);
+    });
+
+    socket.on('caro:move', (idx) => {
+        const user = users.get(socket.id);
+        if (!user || caroGame.winner) return;
+
+        // Xác định lượt đi
+        const currentTurn = caroGame.turn;
+        const player = caroGame.players[currentTurn];
+        if (!player || player.id !== socket.id) {
+            socket.emit('game:toast', { message: 'Chưa tới lượt của bạn hoặc bạn chưa chọn phe!' });
+            return;
+        }
+
+        if (idx < 0 || idx >= caroGame.board.length || caroGame.board[idx] !== null) {
+            return;
+        }
+
+        // Đánh cờ
+        caroGame.board[idx] = currentTurn;
+        caroGame.moveCount++;
+
+        // Kiểm tra thắng
+        const winInfo = checkCaroWin(caroGame.board, idx);
+        if (winInfo) {
+            caroGame.winner = winInfo.winner;
+            caroGame.winningCells = winInfo.winningCells;
+            io.emit('caro:state', caroGame);
+            io.emit('chat:system', {
+                text: `🏆 Chúc mừng ${user.username} (Phe ${currentTurn}) đã giành chiến thắng Cờ Caro!`,
+                time: new Date().toLocaleTimeString('vi-VN')
+            });
+        } else if (caroGame.moveCount >= CARO_SIZE * CARO_SIZE) {
+            caroGame.winner = 'Hòa';
+            io.emit('caro:state', caroGame);
+            io.emit('chat:system', {
+                text: '🤝 Ván cờ Caro đã kết thúc với tỷ số Hòa!',
+                time: new Date().toLocaleTimeString('vi-VN')
+            });
+        } else {
+            caroGame.turn = currentTurn === 'X' ? 'O' : 'X';
+            io.emit('caro:state', caroGame);
+        }
+    });
+
+    socket.on('caro:reset', () => {
+        caroGame.board = Array(CARO_SIZE * CARO_SIZE).fill(null);
+        caroGame.turn = 'X';
+        caroGame.winner = null;
+        caroGame.winningCells = [];
+        caroGame.moveCount = 0;
+        io.emit('caro:state', caroGame);
+        io.emit('chat:system', {
+            text: '🔄 Bàn cờ Caro đã được đặt lại ván mới!',
+            time: new Date().toLocaleTimeString('vi-VN')
+        });
+    });
+
+    // ==========================================
+    // SOCKET EVENTS: BẦU CUA TÔM CÁ LAN
+    // ==========================================
+    socket.on('baucua:shake', () => {
+        const user = users.get(socket.id);
+        const shakerName = user ? user.username : 'Đồng Nghiệp';
+
+        // Lắc 3 xúc xắc
+        const d1 = BAUCUA_ITEMS[Math.floor(Math.random() * 6)];
+        const d2 = BAUCUA_ITEMS[Math.floor(Math.random() * 6)];
+        const d3 = BAUCUA_ITEMS[Math.floor(Math.random() * 6)];
+
+        baucuaState.lastDice = [d1, d2, d3];
+        baucuaState.lastShaker = shakerName;
+        baucuaState.history.unshift({ dice: [d1, d2, d3], shaker: shakerName, time: new Date().toLocaleTimeString('vi-VN') });
+        if (baucuaState.history.length > 8) baucuaState.history.pop();
+
+        io.emit('baucua:result', {
+            dice: [d1, d2, d3],
+            shaker: shakerName,
+            timestamp: Date.now()
+        });
+
+        io.emit('chat:system', {
+            text: `🎲 ${shakerName} vừa lắc Bầu Cua! Kết quả: ${d1.toUpperCase()} - ${d2.toUpperCase()} - ${d3.toUpperCase()}`,
+            time: new Date().toLocaleTimeString('vi-VN')
+        });
+    });
+
     // 6. NGẮT KẾT NỐI (DISCONNECT)
     socket.on('disconnect', () => {
         const user = users.get(socket.id);
         if (!user) return;
 
         users.delete(socket.id);
+
+        // Hủy tư cách chơi caro nếu đang trong bàn
+        let caroChanged = false;
+        if (caroGame.players.X && caroGame.players.X.id === socket.id) {
+            caroGame.players.X = null;
+            caroChanged = true;
+        }
+        if (caroGame.players.O && caroGame.players.O.id === socket.id) {
+            caroGame.players.O = null;
+            caroChanged = true;
+        }
+        if (caroChanged) io.emit('caro:state', caroGame);
 
         io.emit('chat:system', {
             text: `🚪 ${user.username} đã rời khỏi văn phòng.`,
@@ -542,7 +742,7 @@ io.on('connection', (socket) => {
 server.listen(PORT, '0.0.0.0', () => {
     const lanIps = getLanIPs();
     console.log('\n======================================================');
-    console.log('   🎧 LAN MUSIC OFFICE - SERVER REALTIME ONLINE');
+    console.log('   🎧 LAN MUSIC OFFICE & GAME ZONE - SERVER REALTIME');
     console.log('======================================================');
     console.log(`> Truy cập cục bộ: http://localhost:${PORT}`);
     if (lanIps.length > 0) {
@@ -555,6 +755,6 @@ server.listen(PORT, '0.0.0.0', () => {
     }
     console.log('------------------------------------------------------');
     console.log('* Mã QR & API chia sẻ: http://localhost:' + PORT + '/api/qr');
-    console.log('* Tính năng: Time-Sync, Auto Admin Failover, Vote Playlist, QR Code');
+    console.log('* Tính năng: Time-Sync, Auto Admin, Vote Playlist, Cờ Caro LAN, Bầu Cua');
     console.log('======================================================\n');
 });
