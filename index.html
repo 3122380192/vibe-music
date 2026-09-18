@@ -1954,6 +1954,13 @@
                 if (data.gameState) handleGameStateUpdate(data.gameState);
             });
 
+            socket.on('online:update', (data) => {
+                if (data && data.onlineUrl) {
+                    currentOnlineUrl = data.onlineUrl;
+                    updateShareLinkUI();
+                }
+            });
+
             socket.on('admin:update', (data) => {
                 document.getElementById('current-admin-name-lbl').innerText = data.adminName;
                 if (currentUser && currentUser.id === data.adminId) {

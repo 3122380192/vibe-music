@@ -1674,25 +1674,58 @@ server.listen(PORT, '0.0.0.0', async () => {
     // Kiểm tra nếu bật chế độ Online qua tham số --online hoặc biến môi trường ONLINE=true
     const isOnlineRequested = process.argv.includes('--online') || process.env.ONLINE === 'true';
     if (isOnlineRequested) {
+        console.log('> Đang khởi tạo đường hầm Online toàn cầu (Cloudflare HTTPS)...');
+        let tunnelStarted = false;
         try {
-            console.log('> Đang khởi tạo đường hầm Online toàn cầu (Localtunnel)...');
-            const localtunnel = require('localtunnel');
-            const tunnel = await localtunnel({ port: PORT });
-            globalOnlineUrl = tunnel.url;
-            console.log('======================================================');
-            console.log('🌐 ĐÃ KÍCH HOẠT ĐƯỜNG DẪN ONLINE TOÀN CẦU (INTERNET):');
-            console.log(`👉 ${tunnel.url}`);
-            console.log('(Bất kỳ ai ở ngoài mạng LAN cũng có thể truy cập link này!)');
-            console.log('======================================================');
-            tunnel.on('close', () => {
-                console.log('> Đường hầm Online đã đóng.');
-                globalOnlineUrl = null;
+            const { spawn } = require('child_process');
+            const cpCmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+            const tunnelProcess = spawn(cpCmd, ['--yes', 'cloudflared', 'tunnel', '--url', `http://localhost:${PORT}`], { shell: true });
+            
+            tunnelProcess.stderr.on('data', (data) => {
+                const text = data.toString();
+                const match = text.match(/https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/);
+                if (match && !tunnelStarted) {
+                    tunnelStarted = true;
+                    globalOnlineUrl = match[0];
+                    console.log('======================================================');
+                    console.log('🌐 ĐÃ KÍCH HOẠT ĐƯỜNG DẪN ONLINE TOÀN CẦU (CLOUDFLARE HTTPS):');
+                    console.log(`👉 ${globalOnlineUrl}`);
+                    console.log('(Bất kỳ ai ở ngoài mạng LAN cũng có thể truy cập link này!)');
+                    console.log('======================================================\n');
+                    io.emit('online:update', { onlineUrl: globalOnlineUrl });
+                }
             });
-            tunnel.on('error', (e) => {
-                console.warn('> Cảnh báo đường hầm Online:', e.message);
+
+            tunnelProcess.on('close', () => {
+                if (globalOnlineUrl) {
+                    console.log('> Đường hầm Cloudflare đã đóng.');
+                    globalOnlineUrl = null;
+                }
             });
+
+            // Fallback sang Localtunnel nếu Cloudflare chưa nhận sau 5.5 giây
+            setTimeout(async () => {
+                if (!tunnelStarted && !globalOnlineUrl) {
+                    console.log('> Đang chuyển sang Localtunnel dự phòng...');
+                    try {
+                        const localtunnel = require('localtunnel');
+                        const tunnel = await localtunnel({ port: PORT });
+                        globalOnlineUrl = tunnel.url;
+                        tunnelStarted = true;
+                        console.log('======================================================');
+                        console.log('🌐 ĐÃ KÍCH HOẠT ĐƯỜNG DẪN ONLINE TOÀN CẦU (LOCALTUNNEL):');
+                        console.log(`👉 ${globalOnlineUrl}`);
+                        console.log('(Bất kỳ ai ở ngoài mạng LAN cũng có thể truy cập link này!)');
+                        console.log('======================================================\n');
+                        io.emit('online:update', { onlineUrl: globalOnlineUrl });
+                        tunnel.on('close', () => { globalOnlineUrl = null; });
+                    } catch(errLt) {
+                        console.warn('> Không thể tạo đường hầm qua Localtunnel:', errLt.message);
+                    }
+                }
+            }, 5500);
         } catch(err) {
-            console.warn('> Không thể tạo đường hầm Online tự động:', err.message);
+            console.warn('> Lỗi khi khởi chạy đường hầm Online:', err.message);
         }
     } else {
         console.log('* Mẹo Online: Chạy "start-online.bat" hoặc "npm run online" để mở link Internet ra ngoài mạng LAN');
